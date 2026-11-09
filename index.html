@@ -190,6 +190,22 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 
 .manage{display:grid;gap:16px;margin-top:16px;}
 .admin-note{margin-top:14px;font-size:13px;color:var(--tx3);}
 
+/* hero extras */
+.hero-top{display:flex;justify-content:space-between;align-items:center;gap:10px;position:relative;z-index:1;margin-bottom:8px;}
+.hero-eyebrow{font-size:13px;font-weight:800;letter-spacing:.04em;opacity:.92;}
+.hero-btn{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.45);border-radius:99px;padding:6px 14px;font-size:13px;font-weight:700;min-height:34px;white-space:nowrap;}
+.hero h1{word-break:break-word;}
+/* bulk select */
+.item.sel{outline:2px solid var(--ac);background:var(--ac-soft);}
+.item.selmode{cursor:pointer;}
+.item.selmode a{pointer-events:none;}
+.chk{width:26px;height:26px;border-radius:8px;border:2px solid var(--tx3);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff;margin-top:8px;}
+.item.sel .chk{background:var(--ac);border-color:var(--ac);}
+.selbar{position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom));z-index:40;max-width:620px;margin:0 auto;background:var(--tx);color:var(--bg);border-radius:18px;padding:10px 12px;display:flex;gap:8px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.35);}
+.selbar .n{font-weight:800;font-size:15px;flex:1;white-space:nowrap;}
+.selbar button,.selbar select{min-height:42px;border-radius:10px;font-size:14px;font-weight:700;padding:0 12px;border:none;}
+.selbar select{width:auto;background-color:var(--bg);color:var(--tx);padding:0 30px 0 12px;background-position:right 10px center;}
+
 @media(min-width:640px){
   .stats{grid-template-columns:repeat(4,minmax(0,1fr));}
   .ov{align-items:center;}
@@ -207,6 +223,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 
   .manage{grid-template-columns:1fr 1fr;align-items:start;}
   .manage .card + .card{margin-top:0;}
   .day-h{top:60px;}
+  .selbar{bottom:24px;}
 }
 @media(max-width:479px){.hdr.adm .brand-name{display:none;}.hdr .mode button{padding:7px 13px;}}
 </style>
@@ -218,7 +235,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 
 <script id="published" type="application/json"></script>
 <script>
 /* ===== 定数 ===== */
-const LS_KEY='evt_planner_v1', PIN_KEY='evt_planner_pin', ICON_KEY='evt_planner_icon_v1', SS_ADMIN='evt_planner_admin';
+const LS_KEY='evt_planner_v1', PIN_KEY='evt_planner_pin', ICON_KEY='evt_planner_icon_v1', SS_ADMIN='evt_planner_admin', HERO_KEY='evt_planner_hero_v1';
 const KINDS={event:{l:'イベント',ic:'🎤',c:'#7F77DD'},stage:{l:'ステージ',ic:'🎪',c:'#D4537E'},move:{l:'移動',ic:'🚄',c:'#378ADD'},stay:{l:'宿泊',ic:'🏨',c:'#EF9F27'},goods:{l:'グッズ',ic:'🛍️',c:'#D85A30'},food:{l:'食事',ic:'🍴',c:'#1D9E75'},other:{l:'その他',ic:'📌',c:'#888780'}};
 const STATUS={before:'開始前',ready:'手配済',done:'完了',cancel:'取消',none:'未定'};
 const STATUS_ORDER=['before','ready','done','cancel','none'];
@@ -299,7 +316,7 @@ async function handleIconFile(input){
 let S={projects:[],cur:null};
 let MODE='local';       // local: 端末内で編集可 / locked: 閲覧専用（公開データ）
 let EMBEDDED_ICON=false;
-const UI={admin:false,view:'main',tab:'plan',kind:'all',scope:'cur'};
+const UI={admin:false,view:'main',tab:'plan',kind:'all',scope:'cur',selMode:false,sel:new Set()};
 
 function seed(){
   const it=(title,kind,date,o={})=>Object.assign({id:uid(),title,kind,status:'before',date,time:'',venue:'',price:0,paid:0,links:[],note:''},o);
@@ -434,7 +451,7 @@ function mainHtml(p){
   let range='';
   if(st.first){const a=dlabel(st.first),b=dlabel(st.last);range=a.y+'/'+a.md+a.dow+(st.last!==st.first?' 〜 '+(b.y!==a.y?b.y+'/':'')+b.md+b.dow:'');}
   const hint=canEdit()&&MODE==='local'?'<p class="admin-note">✎ 左上のアイコンをタップして写真を選ぶと、ホーム画面に追加したときのアイコンになります。</p>':'';
-  return `<section class="hero"><h1>${esc(p.name)}</h1>${p.sub?`<div class="hero-sub">${esc(p.sub)}</div>`:''}<div class="hero-meta"><span class="hero-tag big">${cd.big}</span>${range?`<span class="hero-tag">${esc(range)}</span>`:''}</div></section>
+  return `${heroHtml(p,st,cd,range)}
   <section class="stats">
     <div class="stat"><div class="stat-l">費用合計</div><div class="stat-v">${fmt(st.total)}</div><div class="stat-s">取消を除く</div></div>
     <div class="stat"><div class="stat-l">支払済</div><div class="stat-v">${fmt(st.paid)}</div><div class="stat-s">未払い ${fmt(st.unpaid)}</div></div>
@@ -447,13 +464,52 @@ function mainHtml(p){
       <section class="panel${UI.tab==='cost'?' on':''}">${costHtml(p,st)}</section>
       <section class="panel${UI.tab==='links'?' on':''}">${linksHtml(p)}</section>
     </div>
-  </div>${hint}`;
+  </div>${hint}${UI.selMode&&canEdit()?selbarHtml(p):''}`;
+}
+function heroPref(p){try{const m=JSON.parse(sget(HERO_KEY)||'{}');return m[p.id]||'auto';}catch(e){return 'auto';}}
+function setHeroPref(p,v){let m={};try{m=JSON.parse(sget(HERO_KEY)||'{}');}catch(e){}m[p.id]=v;sset(HERO_KEY,JSON.stringify(m));}
+function pickHero(p){
+  const pref=heroPref(p);
+  if(pref==='project')return null;
+  if(pref!=='auto'){const it=p.items.find(i=>i.id===pref);if(it)return {it,manual:true};}
+  const live=p.items.filter(i=>i.status!=='cancel'&&i.date);
+  const main=live.filter(i=>i.kind==='event'||i.kind==='stage');
+  const sorted=sortItems(main.length?main:live);
+  if(!sorted.length)return null;
+  const t=todayStr(),up=sorted.filter(i=>i.date>=t);
+  return up.length?{it:up[0]}:{it:sorted[sorted.length-1],past:true};
+}
+function heroHtml(p,st,cd,range){
+  const h=pickHero(p),t=todayStr();
+  let eye,title,sub='',tags='';
+  if(h){
+    const it=h.it,d=it.date?dlabel(it.date):null,df=it.date?diffDays(t,it.date):null;
+    eye=h.manual?'📌 選択中の予定':h.past?'直近の予定（終了）':'次の予定';
+    const big=df==null?'日程未定':df===0?'今日':df>0?'あと '+df+' 日':'終了';
+    title=it.title;sub=p.name+(p.sub?' ・ '+p.sub:'');
+    tags=`<span class="hero-tag big">${big}</span>${d?`<span class="hero-tag">${d.y}/${d.md}${d.dow}${it.time?' '+esc(it.time)+'〜':''}</span>`:''}${it.venue?`<span class="hero-tag">📍${esc(it.venue)}</span>`:''}`;
+  }else{
+    eye='イベント概要';title=p.name;sub=p.sub;
+    tags=`<span class="hero-tag big">${cd.big}</span>${range?`<span class="hero-tag">${esc(range)}</span>`:''}`;
+  }
+  return `<section class="hero"><div class="hero-top"><span class="hero-eyebrow">${eye}</span><button class="hero-btn" data-act="herochange">⇄ 表示を変更</button></div><h1>${esc(title)}</h1>${sub?`<div class="hero-sub">${esc(sub)}</div>`:''}<div class="hero-meta">${tags}</div></section>`;
+}
+function heroModal(){
+  const p=P(),cur=heroPref(p);
+  const opt=(v,t,sm)=>`<label class="radio"><input type="radio" name="hero" value="${v}"${cur===v?' checked':''}><span><b>${t}</b>${sm?`<small>${sm}</small>`:''}</span></label>`;
+  const list=sortItems(p.items.filter(i=>i.status!=='cancel'));
+  openModal(`<h3>🎯 トップの表示を変更</h3><p class="help" style="margin:0 0 12px">この設定は<b>この端末だけ</b>に保存され、他の人の表示には影響しません。</p><div class="radios">${opt('auto','自動（一番近い予定）','今日以降でいちばん早いイベント・ステージを表示')}${opt('project','イベント全体','名称・期間・開催までの日数')}${list.map(i=>opt(i.id,esc(KINDS[i.kind].ic+' '+i.title),i.date?esc(dlabel(i.date).md+dlabel(i.date).dow+(i.time?' '+i.time:'')):'日程未定')).join('')}</div><div class="mrow"><button class="btn ghost" data-act="closemodal">キャンセル</button><button class="btn" data-act="savehero">表示する</button></div>`);
+}
+function visibleItems(p){return sortItems(p.items.filter(i=>UI.kind==='all'||i.kind===UI.kind));}
+function selbarHtml(p){
+  const vis=visibleItems(p),all=vis.length&&vis.every(i=>UI.sel.has(i.id));
+  return `<div class="selbar"><span class="n">${UI.sel.size}件選択</span><button data-act="selall" style="background:var(--bg);color:var(--tx)">${all?'全解除':'全選択'}</button><select id="bulk-status" aria-label="状況を一括変更"><option value="">状況変更</option>${STATUS_ORDER.map(k=>`<option value="${k}">${STATUS[k]}</option>`).join('')}</select><button data-act="seldel" style="background:var(--danger);color:#fff">削除</button></div>`;
 }
 function planHtml(p){
   const ed=canEdit();
   const kinds=[...new Set(p.items.map(i=>i.kind))];
   const filters=kinds.length>1?`<div class="filters"><button class="fchip${UI.kind==='all'?' on':''}" data-act="kind" data-k="all">すべて</button>${kinds.map(k=>`<button class="fchip${UI.kind===k?' on':''}" data-act="kind" data-k="${k}">${KINDS[k].ic} ${KINDS[k].l}</button>`).join('')}</div>`:'';
-  const list=sortItems(p.items.filter(i=>UI.kind==='all'||i.kind===UI.kind));
+  const list=visibleItems(p);
   const groups={};list.forEach(i=>{(groups[i.date||'']=groups[i.date||'']||[]).push(i);});
   const keys=Object.keys(groups).sort((a,b)=>(a||'9999').localeCompare(b||'9999'));
   const t=todayStr();
@@ -463,18 +519,18 @@ function planHtml(p){
     else head=`<div class="day-h"><span class="day-d" style="font-size:17px">日程未定</span></div>`;
     return `<div class="day">${head}<div class="items">${groups[k].map(itemHtml).join('')}</div></div>`;
   }).join('');
-  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?'<button class="btn sm" data-act="additem">＋ 予定を追加</button>':`<span class="sub">${list.length}件</span>`}</div>${filters}${days||`<div class="empty">まだ予定がありません${ed?'<br>「＋ 予定を追加」から登録しましょう':''}</div>`}</div>`;
+  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${filters}${days||`<div class="empty">まだ予定がありません${ed?'<br>「＋ 予定を追加」から登録しましょう':''}</div>`}</div>`;
 }
 function itemHtml(i){
-  const ed=canEdit(),k=KINDS[i.kind];
+  const ed=canEdit(),k=KINDS[i.kind],sm=UI.selMode&&ed;
   const links=i.links.map(l=>{const u=safeUrl(l.url);if(!u)return '';const t=LTYPES[ltype({url:u,type:l.type})];return `<a class="ilink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t.ic} ${esc(l.label||t.l)}</a>`;}).join('');
   const pay=i.price>0?(i.paid>=i.price?'<span class="chip pay-full">支払済</span>':i.paid>0?`<span class="chip pay-part">一部支払 ${fmt(i.paid)}</span>`:'<span class="chip pay-none">未払い</span>'):'';
-  const stChip=ed?`<button class="chip st-${i.status}" data-act="cycle" data-id="${i.id}" title="タップで切替">${STATUS[i.status]} ⟳</button>`:`<span class="chip st-${i.status}">${STATUS[i.status]}</span>`;
-  return `<article class="item is-${i.status}"><div class="item-ic" style="--kc:${k.c}">${k.ic}</div><div class="item-b">
+  const stChip=ed&&!sm?`<button class="chip st-${i.status}" data-act="cycle" data-id="${i.id}" title="タップで切替">${STATUS[i.status]} ⟳</button>`:`<span class="chip st-${i.status}">${STATUS[i.status]}</span>`;
+  return `<article class="item is-${i.status}${sm?' selmode':''}${sm&&UI.sel.has(i.id)?' sel':''}"${sm?` data-act="toggle" data-id="${i.id}"`:''}>${sm?`<span class="chk">${UI.sel.has(i.id)?'✓':''}</span>`:''}<div class="item-ic" style="--kc:${k.c}">${k.ic}</div><div class="item-b">
     <div class="item-top"><div class="item-t">${esc(i.title)}</div>${i.time?`<span class="item-time">${esc(i.time)}</span>`:''}</div>
     <div class="item-meta">${stChip}${pay}${i.price>0?`<span class="price">${fmt(i.price)}</span>`:''}${i.venue?`<a class="venue" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(i.venue)}" target="_blank" rel="noopener noreferrer">📍${esc(i.venue)}</a>`:''}</div>
-    ${links?`<div class="ilinks">${links}</div>`:''}${i.note?`<div class="note">${esc(i.note)}</div>`:''}</div>
-    ${ed?`<button class="edit-b" data-act="edit" data-id="${i.id}" aria-label="編集">✎</button>`:''}</article>`;
+    ${links&&!sm?`<div class="ilinks">${links}</div>`:''}${i.note?`<div class="note">${esc(i.note)}</div>`:''}</div>
+    ${ed&&!sm?`<button class="edit-b" data-act="edit" data-id="${i.id}" aria-label="編集">✎</button>`:''}</article>`;
 }
 function costHtml(p,st){
   const rows=sortItems(p.items.filter(i=>i.price>0)).map(i=>`<div class="crow${i.status==='cancel'?' is-cancel':''}"><div class="crow-l"><div class="crow-t">${KINDS[i.kind].ic} ${esc(i.title)}</div><div class="crow-s">${i.date?dlabel(i.date).md+' · ':''}${i.paid>=i.price?'支払済':i.paid>0?'残り '+fmt(i.price-i.paid):'未払い'}</div></div><div class="crow-r"><div class="crow-a">${fmt(i.price)}</div></div></div>`).join('');
@@ -580,9 +636,9 @@ const hashPin=s=>{let h=5381;for(const c of s)h=((h<<5)+h+c.charCodeAt(0))|0;ret
 const A={
   tab:el=>{UI.tab=el.dataset.t;render();window.scrollTo({top:0});},
   kind:el=>{UI.kind=el.dataset.k;render();},
-  proj:el=>{S.cur=el.dataset.id;UI.kind='all';if(MODE==='local')save(true);render();},
+  proj:el=>{S.cur=el.dataset.id;UI.selMode=false;UI.sel=new Set();UI.kind='all';if(MODE==='local')save(true);render();},
   login:()=>loginModal(),
-  viewmode:()=>{UI.admin=false;UI.view='main';try{sessionStorage.removeItem(SS_ADMIN);}catch(e){}render();},
+  viewmode:()=>{UI.admin=false;UI.selMode=false;UI.sel=new Set();UI.view='main';try{sessionStorage.removeItem(SS_ADMIN);}catch(e){}render();},
   'viewmode-admin':()=>{},
   dologin:el=>{
     const stored=sget(PIN_KEY),v=($('#pin-in')||{}).value||'';
@@ -594,6 +650,13 @@ const A={
   tomanage:()=>{UI.view='manage';render();window.scrollTo({top:0});},
   toview:()=>{UI.view='main';render();},
   additem:()=>itemModal(null),
+  selmode:()=>{UI.selMode=true;UI.sel=new Set();render();},
+  selexit:()=>{UI.selMode=false;UI.sel=new Set();render();},
+  toggle:el=>{const id=el.dataset.id;if(UI.sel.has(id))UI.sel.delete(id);else UI.sel.add(id);render();},
+  selall:()=>{const ids=visibleItems(P()).map(i=>i.id),all=ids.every(id=>UI.sel.has(id));ids.forEach(id=>{if(all)UI.sel.delete(id);else UI.sel.add(id);});render();},
+  seldel:()=>{const n=UI.sel.size;if(!n){toast('予定を選択してください');return;}if(!confirm('選択した'+n+'件を削除しますか？'))return;P().items=P().items.filter(i=>!UI.sel.has(i.id));UI.selMode=false;UI.sel=new Set();save(true);render();toast(n+'件を削除しました');},
+  herochange:()=>heroModal(),
+  savehero:()=>{const r=document.querySelector('input[name=hero]:checked');if(r){setHeroPref(P(),r.value);toast('この端末の表示を変更しました');}closeModal();render();},
   edit:el=>itemModal(el.dataset.id),
   cycle:el=>{const i=P().items.find(x=>x.id===el.dataset.id);i.status=STATUS_ORDER[(STATUS_ORDER.indexOf(i.status)+1)%STATUS_ORDER.length];save();render();},
   saveitem:()=>saveItem(),
@@ -634,6 +697,7 @@ document.addEventListener('change',e=>{
   if(t.id==='app-icon-input')return handleIconFile(t);
   if(t.id==='imp-input')return importJson(t);
   if(t.name==='scope'){UI.scope=t.value;return;}
+  if(t.id==='bulk-status'){if(!t.value)return;if(!UI.sel.size){toast('予定を選択してください');t.value='';return;}const n=UI.sel.size;P().items.forEach(i=>{if(UI.sel.has(i.id))i.status=t.value;});UI.selMode=false;UI.sel=new Set();save(true);render();toast(n+'件の状況を変更しました');return;}
   if(!canEdit())return;
   if(t.dataset.pf){P()[t.dataset.pf]=t.value.trim();save();render();}
   else if(t.dataset.fund!==undefined){const f=P().funds[Number(t.dataset.fund)];if(t.dataset.k==='amount')f.amount=Number(t.value)||0;else f.label=t.value.trim();save(true);}
