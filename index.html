@@ -70,6 +70,20 @@ label.brand-ic{cursor:pointer;}
 
 /* layout */
 .layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:16px;}
+.col{display:contents;}
+.dtabs{display:none;}
+.prow{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--bd);}
+.prow:last-child{border-bottom:none;padding-bottom:0;}
+.prow.is-cancel{opacity:.5;}
+.prow.is-cancel .prow-t{text-decoration:line-through;}
+.prow-b{flex:1;min-width:0;}
+.prow-t{font-size:16px;font-weight:700;word-break:break-word;}
+.prow-r{text-align:right;flex-shrink:0;}
+.prow-a{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;}
+.prow-s{font-size:12px;color:var(--tx3);margin-top:2px;}
+.subt{font-size:13px;font-weight:800;color:var(--tx3);letter-spacing:.04em;margin:2px 0 4px;}
+.chk-row{display:flex;gap:10px;align-items:center;font-size:15px;font-weight:600;padding:6px 0;}
+.chk-row input{width:20px;height:20px;accent-color:var(--ac);}
 .side{display:contents;}
 .panel{display:none;}
 .panel.on{display:block;}
@@ -217,7 +231,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 
   body{padding-bottom:40px;}
   .layout{grid-template-columns:minmax(0,1.55fr) minmax(340px,1fr);align-items:start;gap:20px;}
   .side{display:block;position:sticky;top:76px;}
-  .panel{display:block;}
+  .col{display:block;}
+  .panel{display:none;}
+  #p-links{display:block;}
+  .layout:not([data-tab=pay]) #p-plan{display:block;}
+  .layout[data-tab=pay] #p-pay{display:block;}
+  .dtabs{display:inline-flex;background:var(--soft);border-radius:99px;padding:3px;border:1px solid var(--bd);margin-bottom:14px;}
+  .dtabs button{border:none;background:transparent;font-size:15px;font-weight:700;padding:8px 22px;border-radius:99px;color:var(--tx3);min-height:38px;}
+  .dtabs button.on{background:var(--ac);color:#fff;}
   .tabbar{display:none;}
   .toast{bottom:30px;}
   .manage{grid-template-columns:1fr 1fr;align-items:start;}
@@ -332,9 +353,12 @@ function seed(){
       it('交通費（行き）','move','2026-03-05'),
       it('交通費（帰り）','move','2026-03-09'),
       it('グッズ','goods','2026-03-06'),
-      it('宿泊費','stay','2026-03-05',{status:'none',note:'ホテルのURLは「編集」からリンク追加できます'}),
-      it('フード','food','',{price:4500}),
-      it('holox CD','goods','',{price:10900})
+      it('宿泊費','stay','2026-03-05',{status:'none',note:'ホテルのURLは「編集」からリンク追加できます'})
+    ],
+    payments:[
+      {id:uid(),title:'ホテル宿泊費',kind:'stay',amount:0,paid:0,method:'',links:[],note:'金額が決まったら「編集」から入力。ホテルの予約ページのURLもここに追加できます',cancel:false},
+      {id:uid(),title:'フード',kind:'food',amount:4500,paid:0,method:'',links:[],note:'',cancel:false},
+      {id:uid(),title:'holox CD',kind:'goods',amount:10900,paid:0,method:'',links:[],note:'',cancel:false}
     ],
     funds:[{label:'paypay',amount:15000},{label:'財布',amount:15000},{label:'口座',amount:130000}],
     links:[
@@ -349,9 +373,14 @@ function normalize(d){
   const projects=(d&&Array.isArray(d.projects)?d.projects:[]).map(p=>({
     id:p.id||uid(),name:p.name||'無題のイベント',sub:p.sub||'',color:p.color||COLORS[0],
     items:(p.items||[]).map(i=>({id:i.id||uid(),title:i.title||'',kind:KINDS[i.kind]?i.kind:'other',status:STATUS[i.status]?i.status:'before',date:i.date||'',time:i.time||'',venue:i.venue||'',price:Number(i.price)||0,paid:Number(i.paid)||0,links:(i.links||[]).filter(l=>l&&l.url),note:i.note||''})),
+    payments:Array.isArray(p.payments)?p.payments.map(x=>({id:x.id||uid(),title:x.title||'',kind:KINDS[x.kind]?x.kind:'other',amount:Number(x.amount)||0,paid:Number(x.paid)||0,method:x.method||'',links:(x.links||[]).filter(l=>l&&l.url),note:x.note||'',cancel:!!x.cancel})):null,
     funds:(p.funds||[]).map(f=>({label:f.label||'',amount:Number(f.amount)||0})),
     links:(p.links||[]).filter(l=>l&&l.url).map(l=>({label:l.label||'',url:l.url,type:l.type||'auto'}))
   }));
+  projects.forEach(pr=>{if(pr.payments===null){ // 旧データ: 日付なしで料金のある予定は「支払い」へ移行
+    const mv=pr.items.filter(i=>!i.date&&i.price>0);
+    pr.items=pr.items.filter(i=>!(!i.date&&i.price>0));
+    pr.payments=mv.map(i=>({id:i.id,title:i.title,kind:i.kind,amount:i.price,paid:i.paid,method:'',links:i.links,note:i.note,cancel:i.status==='cancel'}));}});
   if(!projects.length)return seed();
   const cur=projects.some(p=>p.id===d.cur)?d.cur:projects[0].id;
   return {projects,cur};
@@ -412,9 +441,10 @@ function importJson(input){
 /* ===== 集計 ===== */
 function stats(p){
   const act=p.items.filter(i=>i.status!=='cancel');
-  const total=act.reduce((s,i)=>s+i.price,0);
-  const paid=act.reduce((s,i)=>s+Math.min(i.paid,i.price||i.paid),0);
-  const unpaid=act.reduce((s,i)=>s+Math.max(0,i.price-i.paid),0);
+  const cost=act.map(i=>({a:i.price,p:i.paid})).concat(p.payments.filter(x=>!x.cancel).map(x=>({a:x.amount,p:x.paid})));
+  const total=cost.reduce((s,c)=>s+c.a,0);
+  const paid=cost.reduce((s,c)=>s+Math.min(c.p,c.a||c.p),0);
+  const unpaid=cost.reduce((s,c)=>s+Math.max(0,c.a-c.p),0);
   const funds=p.funds.reduce((s,f)=>s+f.amount,0);
   const dates=act.map(i=>i.date).filter(Boolean).sort();
   return {total,paid,unpaid,funds,left:funds-total,first:dates[0],last:dates[dates.length-1]};
@@ -444,7 +474,7 @@ function render(){
   let body='';
   if(UI.view==='manage'&&canEdit())body=manageHtml(p);
   else body=mainHtml(p);
-  app.innerHTML=`<header class="hdr${canEdit()?' adm':''}"><div class="wrap"><div class="brand">${brand}<span class="brand-name">イベント手帳</span></div><div class="hdr-r">${canEdit()?`<button class="pill-btn" data-act="${UI.view==='manage'?'toview':'tomanage'}">${UI.view==='manage'?'← 戻る':'⚙ 設定'}</button>`:''}${modeSw}</div></div></header>${pbar}<main class="wrap">${body}</main>${(UI.view==='main')?`<nav class="tabbar" aria-label="ページ切替"><button class="${UI.tab==='plan'?'on':''}" data-act="tab" data-t="plan"><span>🗓️</span>予定</button><button class="${UI.tab==='cost'?'on':''}" data-act="tab" data-t="cost"><span>💴</span>費用</button><button class="${UI.tab==='links'?'on':''}" data-act="tab" data-t="links"><span>🔗</span>リンク</button></nav>`:''}`;
+  app.innerHTML=`<header class="hdr${canEdit()?' adm':''}"><div class="wrap"><div class="brand">${brand}<span class="brand-name">イベント手帳</span></div><div class="hdr-r">${canEdit()?`<button class="pill-btn" data-act="${UI.view==='manage'?'toview':'tomanage'}">${UI.view==='manage'?'← 戻る':'⚙ 設定'}</button>`:''}${modeSw}</div></div></header>${pbar}<main class="wrap">${body}</main>${(UI.view==='main')?`<nav class="tabbar" aria-label="ページ切替"><button class="${UI.tab==='plan'?'on':''}" data-act="tab" data-t="plan"><span>🗓️</span>予定</button><button class="${UI.tab==='pay'?'on':''}" data-act="tab" data-t="pay"><span>💴</span>支払い</button><button class="${UI.tab==='links'?'on':''}" data-act="tab" data-t="links"><span>🔗</span>リンク</button></nav>`:''}`;
 }
 function mainHtml(p){
   const st=stats(p),cd=countdown(st);
@@ -458,11 +488,14 @@ function mainHtml(p){
     <div class="stat"><div class="stat-l">資金合計</div><div class="stat-v">${fmt(st.funds)}</div><div class="stat-s">${p.funds.length}口座・財布</div></div>
     <div class="stat"><div class="stat-l">資金の残り</div><div class="stat-v${st.left<0?' neg':''}">${fmt(st.left)}</div><div class="stat-s">資金 − 費用合計</div></div>
   </section>
-  <div class="layout">
-    <section class="panel${UI.tab==='plan'?' on':''}">${planHtml(p)}</section>
+  <div class="layout" data-tab="${UI.tab}">
+    <div class="col">
+      <div class="dtabs"><button class="${UI.tab!=='pay'?'on':''}" data-act="tab" data-t="plan">🗓️ 予定</button><button class="${UI.tab==='pay'?'on':''}" data-act="tab" data-t="pay">💴 支払い</button></div>
+      <section class="panel${UI.tab==='plan'?' on':''}" id="p-plan">${planHtml(p)}</section>
+      <section class="panel${UI.tab==='pay'?' on':''}" id="p-pay">${payHtml(p,st)}</section>
+    </div>
     <div class="side">
-      <section class="panel${UI.tab==='cost'?' on':''}">${costHtml(p,st)}</section>
-      <section class="panel${UI.tab==='links'?' on':''}">${linksHtml(p)}</section>
+      <section class="panel${UI.tab==='links'?' on':''}" id="p-links">${linksHtml(p)}</section>
     </div>
   </div>${hint}${UI.selMode&&canEdit()?selbarHtml(p):''}`;
 }
@@ -532,15 +565,49 @@ function itemHtml(i){
     ${links&&!sm?`<div class="ilinks">${links}</div>`:''}${i.note?`<div class="note">${esc(i.note)}</div>`:''}</div>
     ${ed&&!sm?`<button class="edit-b" data-act="edit" data-id="${i.id}" aria-label="編集">✎</button>`:''}</article>`;
 }
-function costHtml(p,st){
-  const rows=sortItems(p.items.filter(i=>i.price>0)).map(i=>`<div class="crow${i.status==='cancel'?' is-cancel':''}"><div class="crow-l"><div class="crow-t">${KINDS[i.kind].ic} ${esc(i.title)}</div><div class="crow-s">${i.date?dlabel(i.date).md+' · ':''}${i.paid>=i.price?'支払済':i.paid>0?'残り '+fmt(i.price-i.paid):'未払い'}</div></div><div class="crow-r"><div class="crow-a">${fmt(i.price)}</div></div></div>`).join('');
+function payRow(x){
+  const ed=canEdit(),k=KINDS[x.kind]||KINDS.other;
+  const full=x.amount>0&&x.paid>=x.amount;
+  const cls=x.cancel?'st-cancel':full?'pay-full':x.paid>0?'pay-part':x.amount>0?'pay-none':'st-none';
+  const txt=x.cancel?'取消':full?'支払済':x.paid>0?'一部支払':x.amount>0?'未払い':'金額未定';
+  const chip=(ed&&!x.cancel&&x.amount>0)?`<button class="chip ${cls}" data-act="paytoggle" data-id="${x.id}" title="タップで支払済/未払いを切替">${txt} ⟳</button>`:`<span class="chip ${cls}">${txt}</span>`;
+  const links=x.links.map(l=>{const u=safeUrl(l.url);if(!u)return '';const t=LTYPES[ltype({url:u,type:l.type})];return `<a class="ilink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t.ic} ${esc(l.label||t.l)}</a>`;}).join('');
+  const rest=(!x.cancel&&x.amount>x.paid&&x.paid>0)?`<div class="prow-s">残り ${fmt(x.amount-x.paid)}</div>`:'';
+  return `<div class="prow${x.cancel?' is-cancel':''}"><div class="item-ic" style="--kc:${k.c}">${k.ic}</div><div class="prow-b"><div class="prow-t">${esc(x.title)}</div><div class="item-meta">${chip}${x.method?`<span>${esc(x.method)}</span>`:''}</div>${links?`<div class="ilinks">${links}</div>`:''}${x.note?`<div class="note">${esc(x.note)}</div>`:''}</div><div class="prow-r"><div class="prow-a">${x.amount>0?fmt(x.amount):'—'}</div>${rest}</div>${ed?`<button class="edit-b" data-act="editpay" data-id="${x.id}" aria-label="編集">✎</button>`:''}</div>`;
+}
+function payHtml(p,st){
+  const ed=canEdit();
   const pct=st.total>0?Math.min(100,Math.round(st.paid/st.total*100)):0;
+  const pays=p.payments.map(payRow).join('');
+  const rows=sortItems(p.items.filter(i=>i.price>0)).map(i=>`<div class="crow${i.status==='cancel'?' is-cancel':''}"><div class="crow-l"><div class="crow-t">${KINDS[i.kind].ic} ${esc(i.title)}</div><div class="crow-s">${i.date?dlabel(i.date).md+' · ':''}${i.paid>=i.price?'支払済':i.paid>0?'残り '+fmt(i.price-i.paid):'未払い'}</div></div><div class="crow-r"><div class="crow-a">${fmt(i.price)}</div></div></div>`).join('');
   const funds=p.funds.map(f=>`<div class="sum-row"><span>${esc(f.label)}</span><b>${fmt(f.amount)}</b></div>`).join('');
-  return `<div class="card"><div class="card-h"><span class="card-t">費用</span><span class="sub">支払済 ${pct}%</span></div>
+  return `<div class="card"><div class="card-h"><span class="card-t">支払い</span>${ed?'<button class="btn sm" data-act="addpay">＋ 支払いを追加</button>':`<span class="sub">支払済 ${pct}%</span>`}</div>
   <div class="bar"><i style="width:${pct}%"></i></div>
-  <div class="sum-row"><span>支払済</span><b>${fmt(st.paid)}</b></div><div class="sum-row"><span>未払い</span><b>${fmt(st.unpaid)}</b></div><div class="sum-row total"><span>合計</span><b>${fmt(st.total)}</b></div>
-  <div class="gap"></div>${rows||'<div class="empty">料金の入った予定がありません</div>'}</div>
+  <div class="sum-row"><span>支払済</span><b>${fmt(st.paid)}</b></div><div class="sum-row"><span>未払い</span><b>${fmt(st.unpaid)}</b></div><div class="sum-row total"><span>費用合計（予定の費用を含む）</span><b>${fmt(st.total)}</b></div>
+  <div class="gap"></div><div class="subt">日付のない支払い（宿泊・交通・グッズなど）</div>${pays||`<div class="empty">登録された支払いはありません${ed?'<br>「＋ 支払いを追加」から登録できます':''}</div>`}</div>
+  <div class="card"><div class="card-h"><span class="card-t">予定にかかる費用</span></div>${rows||'<div class="empty">料金の入った予定がありません</div>'}${ed&&rows?'<p class="help">予定の料金は、スケジュールの「✎」から編集できます。</p>':''}</div>
   <div class="card"><div class="card-h"><span class="card-t">資金</span></div>${funds||'<div class="empty">資金が未登録です</div>'}<div class="sum-row total"><span>資金の残り</span><b class="${st.left<0?'neg':''}">${fmt(st.left)}</b></div></div>`;
+}
+function payModal(id){
+  const x=id?P().payments.find(y=>y.id===id):{title:'',kind:'other',amount:0,paid:0,method:'',links:[],note:'',cancel:false};
+  openModal(`<h3>${id?'支払いを編集':'支払いを追加'}</h3><div data-form="pay" data-id="${id||''}">
+    <div class="fld"><label>項目名 *</label><input type="text" id="f-title" value="${esc(x.title)}" placeholder="例：ホテル宿泊費、新幹線代"></div>
+    <div class="fld"><label>種類</label><select id="f-kind">${kindOpts(x.kind)}</select></div>
+    <div class="two"><div class="fld"><label>金額（円）</label><input type="number" id="f-price" inputmode="numeric" min="0" value="${x.amount||''}" placeholder="0"></div><div class="fld"><label>支払済み（円）</label><input type="number" id="f-paid" inputmode="numeric" min="0" value="${x.paid||''}" placeholder="0"><button type="button" class="inline-btn" data-act="paidfull">全額支払済にする</button></div></div>
+    <div class="fld"><label>支払方法・期限など</label><input type="text" id="f-method" value="${esc(x.method)}" placeholder="例：クレカ／現地払い／3月1日まで"></div>
+    <div class="fld"><label>リンク（ホテル予約・公式HPなど）</label><div id="f-links">${x.links.map(linkRow).join('')}</div><button type="button" class="inline-btn" data-act="addlinkrow">＋ リンクを追加</button></div>
+    <div class="fld"><label>メモ</label><textarea id="f-note" placeholder="予約番号・キャンセル規定など">${esc(x.note)}</textarea></div>
+    <label class="chk-row"><input type="checkbox" id="f-cancel"${x.cancel?' checked':''}>取消（合計から除外）</label>
+    <div class="mrow"><button class="btn ghost" data-act="closemodal">キャンセル</button><button class="btn" data-act="savepay">保存</button></div>
+    ${id?`<div class="mrow" style="margin-top:10px"><button class="btn ghost" data-act="duppay" data-id="${id}">複製</button><button class="btn danger" data-act="delpay" data-id="${id}">削除</button></div>`:''}</div>`);
+}
+function savePay(){
+  const f=$('[data-form=pay]'),id=f.dataset.id;
+  const title=$('#f-title').value.trim();if(!title){$('#f-title').focus();toast('項目名を入力してください');return;}
+  const links=[...document.querySelectorAll('#f-links .lr')].map(r=>({label:r.querySelector('.l-label').value.trim(),url:safeUrl(r.querySelector('.l-url').value),type:'auto'})).filter(l=>l.url);
+  const o={title,kind:$('#f-kind').value,amount:Math.max(0,Number($('#f-price').value)||0),paid:Math.max(0,Number($('#f-paid').value)||0),method:$('#f-method').value.trim(),links,note:$('#f-note').value.trim(),cancel:$('#f-cancel').checked};
+  if(id)Object.assign(P().payments.find(y=>y.id===id),o);else P().payments.push(Object.assign({id:uid()},o));
+  save();closeModal();render();
 }
 function linksHtml(p){
   const ed=canEdit();
@@ -650,6 +717,12 @@ const A={
   tomanage:()=>{UI.view='manage';render();window.scrollTo({top:0});},
   toview:()=>{UI.view='main';render();},
   additem:()=>itemModal(null),
+  addpay:()=>payModal(null),
+  editpay:el=>payModal(el.dataset.id),
+  savepay:()=>savePay(),
+  delpay:el=>{if(!confirm('この支払いを削除しますか？'))return;P().payments=P().payments.filter(x=>x.id!==el.dataset.id);save();closeModal();render();},
+  duppay:el=>{const x=P().payments.find(y=>y.id===el.dataset.id);P().payments.push(Object.assign(JSON.parse(JSON.stringify(x)),{id:uid(),title:x.title+'（コピー）'}));save();closeModal();render();},
+  paytoggle:el=>{const x=P().payments.find(y=>y.id===el.dataset.id);x.paid=x.paid>=x.amount?0:x.amount;save();render();},
   selmode:()=>{UI.selMode=true;UI.sel=new Set();render();},
   selexit:()=>{UI.selMode=false;UI.sel=new Set();render();},
   toggle:el=>{const id=el.dataset.id;if(UI.sel.has(id))UI.sel.delete(id);else UI.sel.add(id);render();},
@@ -675,9 +748,11 @@ const A={
     const tpl=(document.querySelector('input[name=tpl]:checked')||{}).value;
     const mk=(title,kind,extra)=>Object.assign({id:uid(),title,kind,status:'none',date:'',time:'',venue:'',price:0,paid:0,links:[],note:''},extra||{});
     const items=tpl==='trip'?[mk('チケット','event'),mk('往路','move'),mk('宿泊','stay'),mk('復路','move'),mk('グッズ','goods')]:[];
-    const p={id:uid(),name,sub:$('#np-sub').value.trim(),color:COLORS[S.projects.length%COLORS.length],items,funds:[],links:[]};
+    const mkp=(title,kind)=>({id:uid(),title,kind,amount:0,paid:0,method:'',links:[],note:'',cancel:false});
+    const payments=tpl==='trip'?[mkp('宿泊費','stay'),mkp('交通費','move')]:[];
+    const p={id:uid(),name,sub:$('#np-sub').value.trim(),color:COLORS[S.projects.length%COLORS.length],items,payments,funds:[],links:[]};
     S.projects.push(p);S.cur=p.id;UI.kind='all';save();closeModal();UI.view='main';render();},
-  dupproj:()=>{const c=JSON.parse(JSON.stringify(P()));c.id=uid();c.name+='（コピー）';c.items.forEach(i=>i.id=uid());S.projects.push(c);S.cur=c.id;save();render();},
+  dupproj:()=>{const c=JSON.parse(JSON.stringify(P()));c.id=uid();c.name+='（コピー）';c.items.forEach(i=>i.id=uid());c.payments.forEach(x=>x.id=uid());S.projects.push(c);S.cur=c.id;save();render();},
   delproj:()=>{if(S.projects.length<2){toast('最後のイベントは削除できません');return;}if(!confirm('「'+P().name+'」を削除します。元に戻せません。')) return;S.projects=S.projects.filter(p=>p.id!==S.cur);S.cur=S.projects[0].id;save();UI.view='main';render();},
   color:el=>{P().color=el.dataset.c;save(true);render();},
   addfund:()=>{P().funds.push({label:'',amount:0});save(true);render();},
