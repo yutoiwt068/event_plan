@@ -201,6 +201,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 
 .fund .x{border:1.5px solid var(--bd);background:var(--card);border-radius:12px;font-size:18px;color:var(--tx3);}
 .toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:99px;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:.25s;z-index:80;max-width:90vw;text-align:center;}
 .toast.show{opacity:1;transform:translate(-50%,0);}
+.toast.act{pointer-events:auto;}
+.toast button{margin-left:14px;background:none;border:none;color:#7ee0bf;font-weight:800;font-size:14px;padding:4px 2px;min-height:28px;}
+.atool{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;}
+.atool-l{font-size:12px;font-weight:800;color:var(--ac-ink);background:var(--ac-soft);border-radius:99px;padding:4px 12px;}
+.atool-r{display:flex;gap:6px;margin-left:auto;}
+.tbtn{border:1px solid var(--bd);background:var(--card);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:700;min-height:36px;}
+.tbtn:disabled{opacity:.4;cursor:default;}
+.cal-row{margin:-4px 0 12px;}
+.ilink.cal{color:var(--tx2);}
+.hrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd);}
+.hrow:last-child{border-bottom:none;}
 .manage{display:grid;gap:16px;margin-top:16px;}
 .admin-note{margin-top:14px;font-size:13px;color:var(--tx3);}
 
@@ -246,7 +257,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 
   .day-h{top:60px;}
   .selbar{bottom:24px;}
 }
-@media(max-width:479px){.hdr.adm .brand-name{display:none;}.hdr .mode button{padding:7px 13px;}}
+@media(max-width:479px){.atool-l{display:none;}.hdr.adm .brand-name{display:none;}.hdr .mode button{padding:7px 13px;}}
 </style>
 </head>
 <body>
@@ -278,7 +289,8 @@ function safeUrl(u){u=String(u||'').trim();if(!u)return '';if(!/^[a-z][a-z0-9+.-
 function domain(u){try{return new URL(u).hostname.replace(/^www\./,'');}catch(e){return u;}}
 function guessType(u){if(/docs\.google\.com\/document/.test(u))return 'doc';if(/docs\.google\.com\/spreadsheets/.test(u))return 'sheet';if(/google\.[a-z.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/.test(u))return 'map';return 'other';}
 function ltype(l){return (l.type&&l.type!=='auto'&&LTYPES[l.type])?l.type:guessType(l.url);}
-function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600);}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.remove('act');t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600);}
+function toastUndo(msg){const t=$('#toast');t.innerHTML=esc(msg)+'<button data-act="undo">元に戻す</button>';t.classList.add('show','act');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show','act'),6000);}
 
 /* ===== ストレージ（localStorage が使えない環境でもメモリで動作） ===== */
 const mem={};
@@ -389,7 +401,91 @@ function loadLocal(){
   try{const raw=sget(LS_KEY);S=raw?normalize(JSON.parse(raw)):seed();}catch(e){S=seed();}
   if(!sget(LS_KEY))save(true);
 }
-function save(quiet){sset(LS_KEY,JSON.stringify(S));if(!quiet)toast('保存しました');}
+function save(quiet){sset(LS_KEY,JSON.stringify(S));hpush();if(!quiet)toast('保存しました');}
+/* ===== 変更履歴（元に戻す／やり直す） ===== */
+const HIST_KEY='evt_planner_hist_v1';
+const H={stack:[],idx:-1};
+const snap=()=>JSON.stringify(S.projects);
+function hsave(){sset(HIST_KEY,JSON.stringify(H));}
+function hinit(){
+  let ok=false;
+  try{const h=JSON.parse(sget(HIST_KEY)||'null');if(h&&Array.isArray(h.stack)&&h.stack[h.idx]&&h.stack[h.idx].j===snap()){H.stack=h.stack;H.idx=h.idx;ok=true;}}catch(e){}
+  if(!ok){H.stack=[{j:snap(),t:Date.now()}];H.idx=0;hsave();}
+}
+function hpush(){
+  if(MODE!=='local')return;
+  const j=snap();if(H.stack[H.idx]&&H.stack[H.idx].j===j)return;
+  H.stack=H.stack.slice(0,H.idx+1);H.stack.push({j,t:Date.now()});
+  if(H.stack.length>30)H.stack.shift();
+  H.idx=H.stack.length-1;hsave();
+}
+function hgo(i){
+  if(i<0||i>=H.stack.length)return false;
+  H.idx=i;S=normalize({projects:JSON.parse(H.stack[i].j),cur:S.cur});
+  sset(LS_KEY,JSON.stringify(S));hsave();return true;
+}
+function atoolHtml(){
+  if(!(canEdit()&&MODE==='local'))return '';
+  return `<div class="atool"><span class="atool-l">管理モード</span><span class="atool-r"><button class="tbtn" data-act="undo"${H.idx>0?'':' disabled'}>↶ 元に戻す</button><button class="tbtn" data-act="redo"${H.idx<H.stack.length-1?'':' disabled'}>↷ やり直す</button><button class="tbtn" data-act="history">🕘 履歴</button></span></div>`;
+}
+function historyModal(){
+  const cnt=j=>{const pr=JSON.parse(j);return {i:pr.reduce((a,p)=>a+p.items.length,0),y:pr.reduce((a,p)=>a+(p.payments||[]).length,0),n:pr.length};};
+  const rows=H.stack.map((h,i)=>{
+    const c=cnt(h.j),d=new Date(h.t);let sum='最初の状態';
+    if(i>0){const b=cnt(H.stack[i-1].j),parts=[];
+      if(c.i!==b.i)parts.push('予定 '+(c.i>b.i?'+':'')+(c.i-b.i));
+      if(c.y!==b.y)parts.push('支払い '+(c.y>b.y?'+':'')+(c.y-b.y));
+      if(c.n!==b.n)parts.push('イベント '+(c.n>b.n?'+':'')+(c.n-b.n));
+      sum=parts.length?parts.join(' ・ '):'内容を編集';}
+    return `<div class="hrow"><div><b>${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}</b>${i===H.idx?' <span class="chip st-ready">現在</span>':''}<div class="prow-s">${sum}（予定${c.i}件・支払い${c.y}件）</div></div>${i===H.idx?'':`<button class="btn sm ghost" data-act="restore" data-i="${i}">この時点に戻す</button>`}</div>`;
+  }).reverse().join('');
+  openModal(`<h3>🕘 変更履歴</h3><p class="help" style="margin:0 0 10px">直近${H.stack.length}回分の保存状態です（最大30回）。戻しても、その後の履歴は残ります。</p>${rows}<div class="mrow"><button class="btn ghost" data-act="closemodal">閉じる</button></div>`);
+}
+
+/* ===== カレンダー（.ics 書き出し／Googleカレンダー） ===== */
+function ymd(d){return d.replace(/-/g,'');}
+function fmtLocal(e){return e.getFullYear()+pad(e.getMonth()+1)+pad(e.getDate())+'T'+pad(e.getHours())+pad(e.getMinutes())+'00';}
+function addDays(d,n){const x=parseD(d);x.setDate(x.getDate()+n);return x.getFullYear()+pad(x.getMonth()+1)+pad(x.getDate());}
+function startEnd(i,hours){
+  if(i.time){const [h,m]=i.time.split(':').map(Number);const st=parseD(i.date);st.setHours(h,m);const en=parseD(i.date);en.setHours(h+hours,m);return {s:fmtLocal(st),e:fmtLocal(en),allDay:false};}
+  return {s:ymd(i.date),e:addDays(i.date,1),allDay:true};
+}
+function gcalUrl(i){
+  if(!i.date||i.status==='cancel')return '';
+  const r=startEnd(i,2),det=[P().name,i.note].filter(Boolean).join('\n');
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(i.title)+'&dates='+r.s+'/'+r.e+'&location='+encodeURIComponent(i.venue||'')+'&details='+encodeURIComponent(det);
+}
+function calItems(p,scope){const l=p.items.filter(i=>i.date&&i.status!=='cancel');return sortItems(scope==='main'?l.filter(i=>i.kind==='event'||i.kind==='stage'):l);}
+const icsEsc=t=>String(t||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');
+function icsFold(line){const enc=new TextEncoder(),out=[];let cur='',bytes=0;for(const ch of line){const b=enc.encode(ch).length;if(bytes+b>73){out.push(cur);cur=' '+ch;bytes=1+b;}else{cur+=ch;bytes+=b;}}out.push(cur);return out.join('\r\n');}
+function buildIcs(p,list,hours,alarm){
+  const now=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Event Planner//JA','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:'+icsEsc(p.name)];
+  list.forEach(i=>{
+    const r=startEnd(i,hours);
+    L.push('BEGIN:VEVENT','UID:'+i.id+'@event-planner','DTSTAMP:'+now);
+    if(r.allDay)L.push('DTSTART;VALUE=DATE:'+r.s,'DTEND;VALUE=DATE:'+r.e);else L.push('DTSTART:'+r.s,'DTEND:'+r.e);
+    L.push('SUMMARY:'+icsEsc(i.title));
+    if(i.venue)L.push('LOCATION:'+icsEsc(i.venue));
+    const desc=[p.name+(p.sub?'（'+p.sub+'）':''),STATUS[i.status],i.price>0?'料金 '+fmt(i.price):'',i.note].concat(i.links.map(l=>(l.label?l.label+': ':'')+l.url)).filter(Boolean).join('\n');
+    L.push('DESCRIPTION:'+icsEsc(desc));
+    if(alarm)L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+icsEsc(i.title),'TRIGGER:'+(r.allDay?'-PT15H':'-PT1H'),'END:VALARM');
+    L.push('END:VEVENT');
+  });
+  L.push('END:VCALENDAR');
+  return L.map(icsFold).join('\r\n')+'\r\n';
+}
+function calModal(){
+  const p=P(),all=calItems(p,'all'),main=calItems(p,'main');
+  openModal(`<h3>📅 カレンダーに追加</h3>
+    <div class="fld"><span class="lbl">対象</span><div class="radios">
+      <label class="radio"><input type="radio" name="cscope" value="all" checked><span><b>日付のあるすべての予定</b><small>${all.length}件（移動・宿泊・グッズなどを含む）</small></span></label>
+      <label class="radio"><input type="radio" name="cscope" value="main"><span><b>イベント・ステージのみ</b><small>${main.length}件</small></span></label></div></div>
+    <div class="two"><div class="fld"><label>1件あたりの長さ（時刻ありの予定）</label><select id="c-hours"><option value="1">1時間</option><option value="2" selected>2時間</option><option value="3">3時間</option><option value="4">4時間</option></select></div>
+    <div class="fld"><label>通知</label><select id="c-alarm"><option value="1" selected>付ける</option><option value="0">付けない</option></select></div></div>
+    <p class="help">・通知は、時刻ありの予定は1時間前、時刻なしの予定は前日の9時です。<br>・保存した .ics ファイルを開くと、iPhone・Androidのカレンダーに追加できます。Googleカレンダーはパソコンの「設定 → インポート」から取り込みます。<br>・予定ごとの「📅 カレンダー」ボタンで、Googleカレンダーに1件ずつ追加することもできます。</p>
+    <div class="mrow"><button class="btn ghost" data-act="closemodal">キャンセル</button><button class="btn" data-act="dlics">⬇ .icsを保存</button></div>`);
+}
 const P=()=>S.projects.find(p=>p.id===S.cur)||S.projects[0];
 const canEdit=()=>MODE==='local'&&UI.admin;
 
@@ -481,7 +577,7 @@ function mainHtml(p){
   let range='';
   if(st.first){const a=dlabel(st.first),b=dlabel(st.last);range=a.y+'/'+a.md+a.dow+(st.last!==st.first?' 〜 '+(b.y!==a.y?b.y+'/':'')+b.md+b.dow:'');}
   const hint=canEdit()&&MODE==='local'?'<p class="admin-note">✎ 左上のアイコンをタップして写真を選ぶと、ホーム画面に追加したときのアイコンになります。</p>':'';
-  return `${heroHtml(p,st,cd,range)}
+  return `${atoolHtml()}${heroHtml(p,st,cd,range)}
   <section class="stats">
     <div class="stat"><div class="stat-l">費用合計</div><div class="stat-v">${fmt(st.total)}</div><div class="stat-s">取消を除く</div></div>
     <div class="stat"><div class="stat-l">支払済</div><div class="stat-v">${fmt(st.paid)}</div><div class="stat-s">未払い ${fmt(st.unpaid)}</div></div>
@@ -552,17 +648,18 @@ function planHtml(p){
     else head=`<div class="day-h"><span class="day-d" style="font-size:17px">日程未定</span></div>`;
     return `<div class="day">${head}<div class="items">${groups[k].map(itemHtml).join('')}</div></div>`;
   }).join('');
-  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${filters}${days||`<div class="empty">まだ予定がありません${ed?'<br>「＋ 予定を追加」から登録しましょう':''}</div>`}</div>`;
+  const calRow=(!UI.selMode&&p.items.some(i=>i.date&&i.status!=='cancel'))?'<div class="cal-row"><button class="tbtn" data-act="calmodal">📅 カレンダーに追加（.ics）</button></div>':'';
+  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${calRow}${filters}${days||`<div class="empty">まだ予定がありません${ed?'<br>「＋ 予定を追加」から登録しましょう':''}</div>`}</div>`;
 }
 function itemHtml(i){
-  const ed=canEdit(),k=KINDS[i.kind],sm=UI.selMode&&ed;
+  const ed=canEdit(),k=KINDS[i.kind],sm=UI.selMode&&ed,cal=gcalUrl(i);
   const links=i.links.map(l=>{const u=safeUrl(l.url);if(!u)return '';const t=LTYPES[ltype({url:u,type:l.type})];return `<a class="ilink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t.ic} ${esc(l.label||t.l)}</a>`;}).join('');
   const pay=i.price>0?(i.paid>=i.price?'<span class="chip pay-full">支払済</span>':i.paid>0?`<span class="chip pay-part">一部支払 ${fmt(i.paid)}</span>`:'<span class="chip pay-none">未払い</span>'):'';
   const stChip=ed&&!sm?`<button class="chip st-${i.status}" data-act="cycle" data-id="${i.id}" title="タップで切替">${STATUS[i.status]} ⟳</button>`:`<span class="chip st-${i.status}">${STATUS[i.status]}</span>`;
   return `<article class="item is-${i.status}${sm?' selmode':''}${sm&&UI.sel.has(i.id)?' sel':''}"${sm?` data-act="toggle" data-id="${i.id}"`:''}>${sm?`<span class="chk">${UI.sel.has(i.id)?'✓':''}</span>`:''}<div class="item-ic" style="--kc:${k.c}">${k.ic}</div><div class="item-b">
     <div class="item-top"><div class="item-t">${esc(i.title)}</div>${i.time?`<span class="item-time">${esc(i.time)}</span>`:''}</div>
     <div class="item-meta">${stChip}${pay}${i.price>0?`<span class="price">${fmt(i.price)}</span>`:''}${i.venue?`<a class="venue" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(i.venue)}" target="_blank" rel="noopener noreferrer">📍${esc(i.venue)}</a>`:''}</div>
-    ${links&&!sm?`<div class="ilinks">${links}</div>`:''}${i.note?`<div class="note">${esc(i.note)}</div>`:''}</div>
+    ${(links||cal)&&!sm?`<div class="ilinks">${links}${cal?`<a class="ilink cal" href="${esc(cal)}" target="_blank" rel="noopener noreferrer">📅 カレンダー</a>`:''}</div>`:''}${i.note?`<div class="note">${esc(i.note)}</div>`:''}</div>
     ${ed&&!sm?`<button class="edit-b" data-act="edit" data-id="${i.id}" aria-label="編集">✎</button>`:''}</article>`;
 }
 function payRow(x){
@@ -717,23 +814,32 @@ const A={
   tomanage:()=>{UI.view='manage';render();window.scrollTo({top:0});},
   toview:()=>{UI.view='main';render();},
   additem:()=>itemModal(null),
+  undo:()=>{if(hgo(H.idx-1)){render();toast('元に戻しました');}else toast('これ以上戻せません');},
+  redo:()=>{if(hgo(H.idx+1)){render();toast('やり直しました');}else toast('これ以上進めません');},
+  history:()=>historyModal(),
+  restore:el=>{const i=Number(el.dataset.i);if(!H.stack[i])return;S=normalize({projects:JSON.parse(H.stack[i].j),cur:S.cur});save(true);closeModal();render();toast('この時点に戻しました');},
+  calmodal:()=>calModal(),
+  dlics:()=>{const p=P(),sc=(document.querySelector('input[name=cscope]:checked')||{}).value||'all',list=calItems(p,sc);
+    if(!list.length){toast('対象の予定がありません');return;}
+    downloadBlob((p.name.replace(/[\\/:*?"<>|]/g,'_')||'event')+'.ics','text/calendar',buildIcs(p,list,Number($('#c-hours').value)||2,$('#c-alarm').value==='1'));
+    closeModal();toast(list.length+'件の予定を書き出しました');},
   addpay:()=>payModal(null),
   editpay:el=>payModal(el.dataset.id),
   savepay:()=>savePay(),
-  delpay:el=>{if(!confirm('この支払いを削除しますか？'))return;P().payments=P().payments.filter(x=>x.id!==el.dataset.id);save();closeModal();render();},
+  delpay:el=>{if(!confirm('この支払いを削除しますか？'))return;P().payments=P().payments.filter(x=>x.id!==el.dataset.id);save(true);closeModal();render();toastUndo('支払いを削除しました');},
   duppay:el=>{const x=P().payments.find(y=>y.id===el.dataset.id);P().payments.push(Object.assign(JSON.parse(JSON.stringify(x)),{id:uid(),title:x.title+'（コピー）'}));save();closeModal();render();},
   paytoggle:el=>{const x=P().payments.find(y=>y.id===el.dataset.id);x.paid=x.paid>=x.amount?0:x.amount;save();render();},
   selmode:()=>{UI.selMode=true;UI.sel=new Set();render();},
   selexit:()=>{UI.selMode=false;UI.sel=new Set();render();},
   toggle:el=>{const id=el.dataset.id;if(UI.sel.has(id))UI.sel.delete(id);else UI.sel.add(id);render();},
   selall:()=>{const ids=visibleItems(P()).map(i=>i.id),all=ids.every(id=>UI.sel.has(id));ids.forEach(id=>{if(all)UI.sel.delete(id);else UI.sel.add(id);});render();},
-  seldel:()=>{const n=UI.sel.size;if(!n){toast('予定を選択してください');return;}if(!confirm('選択した'+n+'件を削除しますか？'))return;P().items=P().items.filter(i=>!UI.sel.has(i.id));UI.selMode=false;UI.sel=new Set();save(true);render();toast(n+'件を削除しました');},
+  seldel:()=>{const n=UI.sel.size;if(!n){toast('予定を選択してください');return;}if(!confirm('選択した'+n+'件を削除しますか？'))return;P().items=P().items.filter(i=>!UI.sel.has(i.id));UI.selMode=false;UI.sel=new Set();save(true);render();toastUndo(n+'件を削除しました');},
   herochange:()=>heroModal(),
   savehero:()=>{const r=document.querySelector('input[name=hero]:checked');if(r){setHeroPref(P(),r.value);toast('この端末の表示を変更しました');}closeModal();render();},
   edit:el=>itemModal(el.dataset.id),
   cycle:el=>{const i=P().items.find(x=>x.id===el.dataset.id);i.status=STATUS_ORDER[(STATUS_ORDER.indexOf(i.status)+1)%STATUS_ORDER.length];save();render();},
   saveitem:()=>saveItem(),
-  delitem:el=>{if(!confirm('この予定を削除しますか？'))return;P().items=P().items.filter(x=>x.id!==el.dataset.id);save();closeModal();render();},
+  delitem:el=>{if(!confirm('この予定を削除しますか？'))return;P().items=P().items.filter(x=>x.id!==el.dataset.id);save(true);closeModal();render();toastUndo('予定を削除しました');},
   dupitem:el=>{const i=P().items.find(x=>x.id===el.dataset.id);P().items.push(Object.assign(JSON.parse(JSON.stringify(i)),{id:uid(),title:i.title+'（コピー）'}));save();closeModal();render();},
   paidfull:()=>{$('#f-paid').value=$('#f-price').value||0;},
   addlinkrow:()=>{$('#f-links').insertAdjacentHTML('beforeend',linkRow());},
@@ -742,7 +848,7 @@ const A={
   editlink:el=>linkModal(Number(el.dataset.i)),
   savelink:()=>{const f=$('[data-form=link]'),idx=Number(f.dataset.i),url=safeUrl($('#l-url').value);if(!url){toast('URLを入力してください（http/https）');return;}
     const o={label:$('#l-label').value.trim(),url,type:$('#l-type').value};if(idx>=0)P().links[idx]=o;else P().links.push(o);save();closeModal();render();},
-  dellink:()=>{const idx=Number($('[data-form=link]').dataset.i);if(!confirm('このリンクを削除しますか？'))return;P().links.splice(idx,1);save();closeModal();render();},
+  dellink:()=>{const idx=Number($('[data-form=link]').dataset.i);if(!confirm('このリンクを削除しますか？'))return;P().links.splice(idx,1);save(true);closeModal();render();toastUndo('リンクを削除しました');},
   newproj:()=>newProjModal(),
   saveproj:()=>{const name=$('#np-name').value.trim();if(!name){$('#np-name').focus();return;}
     const tpl=(document.querySelector('input[name=tpl]:checked')||{}).value;
@@ -753,7 +859,7 @@ const A={
     const p={id:uid(),name,sub:$('#np-sub').value.trim(),color:COLORS[S.projects.length%COLORS.length],items,payments,funds:[],links:[]};
     S.projects.push(p);S.cur=p.id;UI.kind='all';save();closeModal();UI.view='main';render();},
   dupproj:()=>{const c=JSON.parse(JSON.stringify(P()));c.id=uid();c.name+='（コピー）';c.items.forEach(i=>i.id=uid());c.payments.forEach(x=>x.id=uid());S.projects.push(c);S.cur=c.id;save();render();},
-  delproj:()=>{if(S.projects.length<2){toast('最後のイベントは削除できません');return;}if(!confirm('「'+P().name+'」を削除します。元に戻せません。')) return;S.projects=S.projects.filter(p=>p.id!==S.cur);S.cur=S.projects[0].id;save();UI.view='main';render();},
+  delproj:()=>{if(S.projects.length<2){toast('最後のイベントは削除できません');return;}if(!confirm('「'+P().name+'」を削除します。元に戻せません。')) return;S.projects=S.projects.filter(p=>p.id!==S.cur);S.cur=S.projects[0].id;save(true);UI.view='main';render();toastUndo('イベントを削除しました');},
   color:el=>{P().color=el.dataset.c;save(true);render();},
   addfund:()=>{P().funds.push({label:'',amount:0});save(true);render();},
   rmfund:el=>{P().funds.splice(Number(el.dataset.i),1);save(true);render();},
@@ -772,12 +878,13 @@ document.addEventListener('change',e=>{
   if(t.id==='app-icon-input')return handleIconFile(t);
   if(t.id==='imp-input')return importJson(t);
   if(t.name==='scope'){UI.scope=t.value;return;}
-  if(t.id==='bulk-status'){if(!t.value)return;if(!UI.sel.size){toast('予定を選択してください');t.value='';return;}const n=UI.sel.size;P().items.forEach(i=>{if(UI.sel.has(i.id))i.status=t.value;});UI.selMode=false;UI.sel=new Set();save(true);render();toast(n+'件の状況を変更しました');return;}
+  if(t.id==='bulk-status'){if(!t.value)return;if(!UI.sel.size){toast('予定を選択してください');t.value='';return;}const n=UI.sel.size;P().items.forEach(i=>{if(UI.sel.has(i.id))i.status=t.value;});UI.selMode=false;UI.sel=new Set();save(true);render();toastUndo(n+'件の状況を変更しました');return;}
   if(!canEdit())return;
   if(t.dataset.pf){P()[t.dataset.pf]=t.value.trim();save();render();}
   else if(t.dataset.fund!==undefined){const f=P().funds[Number(t.dataset.fund)];if(t.dataset.k==='amount')f.amount=Number(t.value)||0;else f.label=t.value.trim();save(true);}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='Enter'&&e.target.id==='pin-in'){const b=document.querySelector('[data-act=dologin]:last-child');if(b)b.click();}});
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&canEdit()&&!$('#modal-root').innerHTML&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();(e.shiftKey?A.redo:A.undo)();return;}if(e.key==='Escape')closeModal();if(e.key==='Enter'&&e.target.id==='pin-in'){const b=document.querySelector('[data-act=dologin]:last-child');if(b)b.click();}});
 
 /* ===== 起動 ===== */
 (async function init(){
@@ -791,11 +898,11 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.ke
       MODE='locked';S=normalize(await unpack(location.hash.slice(3)));
       if(savedIcon)applyAppIcon(savedIcon);
     }else{
-      loadLocal();
+      loadLocal();hinit();
       if(savedIcon)applyAppIcon(savedIcon);
       try{if(sessionStorage.getItem(SS_ADMIN)==='1')UI.admin=true;}catch(e){}
     }
-  }catch(e){console.error(e);MODE='local';loadLocal();}
+  }catch(e){console.error(e);MODE='local';loadLocal();hinit();}
   render();
 })();
 </script>
