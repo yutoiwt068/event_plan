@@ -690,10 +690,11 @@ const NEAR={
   toilet:{l:'トイレ',ic:'🚻',sel:['amenity=toilets'],spot:'toilet'},
   station:{l:'駅',ic:'🚉',sel:['railway~"^(station|halt)$"'],spot:'station'}
 };
-const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const OVERPASS=['https://overpass-api.de/api/interpreter','https://lz4.overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://z.overpass-api.de/api/interpreter','https://overpass.openstreetmap.fr/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
 const GEO_KEY='evt_planner_geo_v1',POI_KEY='evt_planner_poi_v1';
 function cget(k){try{return JSON.parse(sget(k)||'{}')||{};}catch(e){return {};}}
 function cset(k,o){sset(k,JSON.stringify(o));}
+function errMsg(e){const m=(e&&e.message)||String(e);return /abort/i.test(m)?'タイムアウト':/failed to fetch|networkerror|load failed/i.test(m)?'接続できません':m;}
 async function fetchJson(url,opt,ms){
   const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms||15000);
   try{const r=await fetch(url,Object.assign({signal:ac.signal},opt||{}));if(!r.ok)throw new Error('HTTP '+r.status);return await r.json();}
@@ -707,19 +708,41 @@ function parseLatLon(s){
 async function geocode(name){
   const ll=parseLatLon(name);if(ll)return Object.assign({label:name},ll);
   const c=cget(GEO_KEY);if(c[name])return c[name];
-  const j=await fetchJson('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ja&q='+encodeURIComponent(name));
-  if(!j||!j.length)throw new Error('notfound');
-  const r={lat:+j[0].lat,lon:+j[0].lon,label:j[0].display_name};c[name]=r;cset(GEO_KEY,c);return r;
+  const enc=encodeURIComponent(name);
+  const tries=[
+    ['Nominatim',async()=>{const j=await fetchJson('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ja&q='+enc,{},9000);if(!j||!j.length)return null;return {lat:+j[0].lat,lon:+j[0].lon,label:j[0].display_name};}],
+    ['Photon',async()=>{const j=await fetchJson('https://photon.komoot.io/api/?limit=1&q='+enc,{},9000);const f=j&&j.features&&j.features[0];if(!f)return null;return {lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],label:(f.properties&&f.properties.name)||name};}],
+    ['国土地理院',async()=>{const j=await fetchJson('https://msearch.gsi.go.jp/address-search/AddressSearch?q='+enc,{},9000);const f=Array.isArray(j)&&j[0];if(!f)return null;return {lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],label:(f.properties&&f.properties.title)||name};}]
+  ];
+  let ok=false;const errs=[];
+  for(const t of tries){
+    try{const r=await t[1]();ok=true;if(r){c[name]=r;cset(GEO_KEY,c);return r;}}
+    catch(e){errs.push(t[0]+': '+errMsg(e));}
+  }
+  if(ok)throw new Error('notfound');
+  throw new Error(errs.join(' / '));
 }
 function distM(a,b,c,d){const R=6371000,r=x=>x*Math.PI/180,dl=r(c-a),dn=r(d-b),h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
 async function overpass(lat,lon,r,key){
-  const q='[out:json][timeout:20];('+NEAR[key].sel.map(x=>'nwr(around:'+r+','+lat+','+lon+')['+x+'];').join('')+');out center 80;';
-  let err;
-  for(const ep of OVERPASS){
-    try{const j=await fetchJson(ep,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)},20000);return j.elements||[];}
-    catch(e){err=e;}
+  const q='[out:json][timeout:25];('+NEAR[key].sel.map(x=>'nwr(around:'+r+','+lat+','+lon+')['+x+'];').join('')+');out center 80;';
+  const sleep=ms=>new Promise(res=>setTimeout(res,ms));
+  const host=ep=>ep.replace(/^https?:\/\//,'').split('/')[0];
+  const one=async(ep,delay)=>{
+    if(delay)await sleep(delay);
+    const j=await fetchJson(ep,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)},30000);
+    if(!j||!Array.isArray(j.elements))throw new Error('不正な応答');
+    if(!j.elements.length&&j.remark&&/error|timed out/i.test(j.remark))throw new Error('サーバー混雑');
+    return j.elements;
+  };
+  // 最初の3つを同時に、残りは数秒ずらして問い合わせる（最初に成功した結果を使う）
+  const jobs=OVERPASS.map((ep,i)=>one(ep,i<3?0:(i-2)*4000).catch(e=>{throw new Error(host(ep)+' '+errMsg(e));}));
+  if(Promise.any){
+    try{return await Promise.any(jobs);}
+    catch(e){throw new Error((e.errors||[e]).map(x=>x.message).join(' / '));}
   }
-  throw err;
+  const errs=[];
+  for(const j of jobs){try{return await j;}catch(e){errs.push(e.message);}}
+  throw new Error(errs.join(' / '));
 }
 function processPoi(els,lat,lon){
   const seen=new Set(),out=[];
@@ -742,9 +765,11 @@ function curVenue(p){return UI.spotVenue||p.baseVenue||venuesOf(p)[0]||'';}
 async function runNear(key){
   const p=P(),venue=curVenue(p);if(!venue)return;
   UI.nearCat=key;UI.near={status:'loading'};render();
+  let stage='位置検索';
   try{
     const pos=venue==='__geo__'?UI.geo:await geocode(venue);
     if(!pos)throw new Error('nogeo');
+    stage='施設検索';
     const ck=pos.lat.toFixed(3)+','+pos.lon.toFixed(3)+'|'+key+'|'+UI.radius;
     const cache=cget(POI_KEY);let list,t=Date.now(),cached=false;
     try{
@@ -757,7 +782,8 @@ async function runNear(key){
     UI.near={status:'ok',list,pos,cached,t,key,venue};
   }catch(e){
     if(UI.nearCat!==key)return;
-    UI.near={status:'error',msg:e.message==='notfound'?'会場の場所が見つかりませんでした。下の「基準の場所」に住所か緯度・経度を入れると検索できます。':e.message==='nogeo'?'現在地を取得できませんでした。':'検索できませんでした（通信状況をご確認ください）。下のGoogleマップのボタンからも探せます。'};
+    const m=e&&e.message;
+    UI.near={status:'error',msg:m==='notfound'?'会場の場所が見つかりませんでした。下の「基準の場所」に住所か緯度・経度を入れると検索できます。':m==='nogeo'?'現在地を取得できませんでした。':'検索できませんでした。通信状況をご確認のうえ、もう一度お試しください。下のGoogleマップのボタンからも探せます。',detail:(m==='notfound'||m==='nogeo')?'':stage+'：'+m};
   }
   render();
 }
@@ -772,8 +798,8 @@ function nearCard(p){
   const cats=Object.keys(NEAR).map(k=>`<button class="fchip${UI.nearCat===k?' on':''}" data-act="nearcat" data-k="${k}">${NEAR[k].ic} ${NEAR[k].l}</button>`).join('');
   let res='<p class="help">調べたい種類を選ぶと、基準の場所の周辺を自動で検索します。</p>';
   if(!cur)res='<div class="empty">会場が未設定です。'+(ed?'下の「基準の場所を指定」に会場名か住所を入れてください。':'管理者が会場を登録すると使えます。')+'</div>';
-  else if(near&&near.status==='loading')res='<div class="empty"><span class="spin"></span>検索中…</div>';
-  else if(near&&near.status==='error')res=`<div class="empty">${esc(near.msg)}</div>${UI.nearCat?`<div class="qs" style="justify-content:center"><a class="ilink" href="${esc(nearMapUrl(UI.nearCat,cur==='__geo__'?'':cur,cur==='__geo__'?UI.geo:null))}" target="_blank" rel="noopener noreferrer">🗺️ Googleマップで探す</a></div>`:''}`;
+  else if(near&&near.status==='loading')res='<div class="empty"><span class="spin"></span>検索中…<br><small style="font-size:12px">サーバーが混み合っていると、30秒ほどかかることがあります</small></div>';
+  else if(near&&near.status==='error')res=`<div class="empty">${esc(near.msg)}${near.detail?`<br><small style="font-size:11px;word-break:break-all">詳細：${esc(near.detail)}</small>`:''}</div>${UI.nearCat?`<div class="qs" style="justify-content:center"><button class="ilink" data-act="nearretry">🔄 もう一度検索</button><a class="ilink" href="${esc(nearMapUrl(UI.nearCat,cur==='__geo__'?'':cur,cur==='__geo__'?UI.geo:null))}" target="_blank" rel="noopener noreferrer">🗺️ Googleマップで探す</a></div>`:''}`;
   else if(near&&near.status==='ok'){
     const n=NEAR[near.key],d=new Date(near.t);
     const rows=near.list.map((x,i)=>`<div class="prow"><div class="item-ic" style="--kc:#378ADD">${n.ic}</div><div class="prow-b"><div class="prow-t">${esc(x.name)}</div>${x.hours?`<div class="sp-info"><span>🕒 ${esc(x.hours)}</span></div>`:''}<div class="ilinks"><a class="ilink" href="${esc(mapQ(x.lat+','+x.lon))}" target="_blank" rel="noopener noreferrer">📍 地図</a><a class="ilink" href="${esc(mapDir(x.lat+','+x.lon))}" target="_blank" rel="noopener noreferrer">🚶 ここへ行く</a>${ed?`<button class="ilink" data-act="addnear" data-i="${i}">＋ メモに追加</button>`:''}</div></div><div class="prow-r"><div class="dist">${x.dist>=1000?(x.dist/1000).toFixed(1)+'<small>km</small>':x.dist+'<small>m</small>'}</div><div class="prow-s">徒歩約${Math.max(1,Math.round(x.dist/80))}分</div></div></div>`).join('');
@@ -992,6 +1018,7 @@ const A={
     toast('現在地を取得しています…');
     navigator.geolocation.getCurrentPosition(pos=>{UI.geo={lat:pos.coords.latitude,lon:pos.coords.longitude};UI.spotVenue='__geo__';UI.near=null;if(UI.nearCat)runNear(UI.nearCat);else render();},()=>toast('現在地を取得できませんでした（位置情報の許可をご確認ください）'),{enableHighAccuracy:true,timeout:10000});},
   nearcat:el=>runNear(el.dataset.k),
+  nearretry:()=>{if(UI.nearCat)runNear(UI.nearCat);},
   savebase:()=>{P().baseVenue=$('#base-in').value.trim();UI.spotVenue=P().baseVenue;UI.near=null;save();if(UI.nearCat&&UI.spotVenue)runNear(UI.nearCat);else render();},
   addnear:el=>{const x=UI.near&&UI.near.list[Number(el.dataset.i)];if(!x)return;const n=NEAR[UI.near.key];
     if(P().spots.some(y=>y.name===x.name&&y.cat===n.spot)){toast('すでにメモに登録されています');return;}
