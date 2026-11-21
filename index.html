@@ -673,10 +673,8 @@ function selbarHtml(p){
   const vis=visibleItems(p),all=vis.length&&vis.every(i=>UI.sel.has(i.id));
   return `<div class="selbar"><span class="n">${UI.sel.size}件選択</span><button data-act="selall" style="background:var(--bg);color:var(--tx)">${all?'全解除':'全選択'}</button><select id="bulk-status" aria-label="状況を一括変更"><option value="">状況変更</option>${STATUS_ORDER.map(k=>`<option value="${k}">${STATUS[k]}</option>`).join('')}</select><button data-act="seldel" style="background:var(--danger);color:#fff">削除</button></div>`;
 }
-function planHtml(p){
+function planListHtml(p){
   const ed=canEdit();
-  const kinds=[...new Set(p.items.map(i=>i.kind))];
-  const filters=kinds.length>1?`<div class="filters"><button class="fchip${UI.kind==='all'?' on':''}" data-act="kind" data-k="all">すべて</button>${kinds.map(k=>`<button class="fchip${UI.kind===k?' on':''}" data-act="kind" data-k="${k}">${KINDS[k].ic} ${KINDS[k].l}</button>`).join('')}</div>`:'';
   const list=visibleItems(p);
   const groups={};list.forEach(i=>{(groups[i.date||'']=groups[i.date||'']||[]).push(i);});
   const keys=Object.keys(groups).sort((a,b)=>(a||'9999').localeCompare(b||'9999'));
@@ -687,12 +685,19 @@ function planHtml(p){
     else head=`<div class="day-h"><span class="day-d" style="font-size:17px">日程未定</span></div>`;
     return `<div class="day">${head}<div class="items">${groups[k].map(itemHtml).join('')}</div></div>`;
   }).join('');
+  return days||`<div class="empty">${UI.q.trim()?'「'+esc(UI.q.trim())+'」に一致する予定はありません':'まだ予定がありません'+(ed?'<br>「＋ 予定を追加」から登録しましょう':'')}</div>`;
+}
+function planHtml(p){
+  const ed=canEdit();
+  const kinds=[...new Set(p.items.map(i=>i.kind))];
+  const filters=kinds.length>1?`<div class="filters"><button class="fchip${UI.kind==='all'?' on':''}" data-act="kind" data-k="all">すべて</button>${kinds.map(k=>`<button class="fchip${UI.kind===k?' on':''}" data-act="kind" data-k="${k}">${KINDS[k].ic} ${KINDS[k].l}</button>`).join('')}</div>`:'';
+  const list=visibleItems(p);
   const calBtn=p.items.some(i=>i.date&&i.status!=='cancel')?'<button class="tbtn" data-act="calmodal">📅 カレンダーに追加（.ics）</button>':'';
   const rosBtn=allCast(p).length?'<button class="tbtn" data-act="roster">🎤 出演者から探す</button>':'';
   const impBtn=ed?'<button class="tbtn" data-act="importmodal">📷 画像・テキストから追加</button>':'';
   const calRow=(!UI.selMode&&(calBtn||impBtn||rosBtn))?`<div class="cal-row">${calBtn}${rosBtn}${impBtn}</div>`:'';
   const srch=`<div class="srch"><input type="search" id="q-input" placeholder="🔍 予定・出演者・会場・メモを検索" value="${esc(UI.q)}" autocomplete="off"></div>`;
-  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${calRow}${srch}${filters}${days||`<div class="empty">${UI.q.trim()?'「'+esc(UI.q.trim())+'」に一致する予定はありません':'まだ予定がありません'+(ed?'<br>「＋ 予定を追加」から登録しましょう':'')}</div>`}</div>`;
+  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${calRow}${srch}${filters}<div id="plan-list">${planListHtml(p)}</div></div>`;
 }
 function itemHtml(i){
   const ed=canEdit(),k=KINDS[i.kind],sm=UI.selMode&&ed,cal=gcalUrl(i);
@@ -1328,8 +1333,10 @@ const A={
   closeov:(el,e)=>{if(e.target===el)closeModal();}
 };
 document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el)return;if(el.dataset.act==='detail'&&e.target.closest('a'))return;const f=A[el.dataset.act];if(f){f(el,e);}});
+function qApply(t){UI.q=t.value;const l=$('#plan-list');if(l)l.innerHTML=planListHtml(P());}
+document.addEventListener('compositionend',e=>{if(e.target.id==='q-input')qApply(e.target);});
 document.addEventListener('input',e=>{const t=e.target;
-  if(t.id==='q-input'){UI.q=t.value;const c=t.selectionStart;render();const n=$('#q-input');if(n){n.focus();try{n.setSelectionRange(c,c);}catch(x){}}}
+  if(t.id==='q-input'){if(e.isComposing)return;qApply(t);}
   else if(t.id==='r-q'){const v=t.value.trim().toLowerCase();document.querySelectorAll('#r-list .cn').forEach(b=>{b.style.display=(!v||b.dataset.s.includes(v))?'':'none';});}});
 document.addEventListener('change',e=>{
   const t=e.target;
