@@ -101,6 +101,13 @@ label.brand-ic{cursor:pointer;}
 /* filters */
 .filters{display:flex;gap:8px;overflow-x:auto;margin:-4px -2px 14px;padding:4px 2px;scrollbar-width:none;}
 .filters::-webkit-scrollbar{display:none;}
+.item.tap{cursor:pointer;}.item.tap:hover{border-color:var(--ac,#1D9E75);}
+.castmini{font-size:12px;color:var(--tx2);margin-top:6px;font-weight:600;}
+.srch input{width:100%;border:1.5px solid var(--bd);border-radius:12px;padding:10px 14px;font-size:16px;background:var(--card);color:var(--tx);margin:0 0 12px;}
+.drow{padding:10px 0;border-top:1px solid var(--bd);}.dl{font-size:12px;font-weight:700;color:var(--tx2);margin-bottom:4px;}.dv{font-size:15px;word-break:break-word;}
+.mut{color:var(--tx2);}.castwrap{display:flex;flex-wrap:wrap;gap:8px;}.cn small{opacity:.6;margin-left:4px;}
+.trow{display:flex;gap:12px;width:100%;text-align:left;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:12px;padding:10px 12px;margin-bottom:8px;align-items:center;}
+.trd{min-width:56px;font-weight:800;font-size:16px;}.trd small{display:block;font-size:11px;color:var(--tx2);font-weight:600;}.trt{font-weight:700;}.trt small{display:block;font-size:12px;color:var(--tx2);font-weight:500;}
 .fchip{flex-shrink:0;border:1.5px solid var(--bd);background:transparent;border-radius:99px;padding:6px 14px;font-size:14px;font-weight:600;color:var(--tx2);min-height:36px;}
 .fchip.on{background:var(--tx);color:var(--bg);border-color:var(--tx);}
 
@@ -208,7 +215,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 
 .atool-r{display:flex;gap:6px;margin-left:auto;}
 .tbtn{border:1px solid var(--bd);background:var(--card);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:700;min-height:36px;}
 .tbtn:disabled{opacity:.4;cursor:default;}
-.cal-row{margin:-4px 0 12px;}
+.cal-row{margin:-4px 0 12px;display:flex;flex-wrap:wrap;gap:8px;}
+.imp-prev{max-width:100%;max-height:170px;border-radius:12px;border:1px solid var(--bd);display:block;margin:0 auto 14px;object-fit:contain;background:var(--soft);}
+.prog{height:8px;border-radius:99px;background:var(--soft);overflow:hidden;margin:14px 0 8px;}
+.prog>i{display:block;height:100%;width:0;background:var(--ac);border-radius:99px;transition:width .2s;}
+.drop{display:flex;flex-direction:column;align-items:center;gap:6px;border:2px dashed var(--bd);border-radius:16px;padding:26px 12px;text-align:center;font-weight:700;color:var(--tx2);cursor:pointer;}
+.drop span{font-size:30px;}
+.drop small{font-size:12px;color:var(--tx3);font-weight:600;line-height:1.6;}
+.segb{display:flex;gap:8px;margin-bottom:14px;}
+.segb .fchip{flex:1;text-align:center;}
+.cand{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.cand .fchip{min-height:32px;padding:4px 12px;font-size:13px;}
+details.raw{margin-top:6px;}
+details.raw summary{font-size:13px;font-weight:700;color:var(--tx2);cursor:pointer;padding:6px 0;}
 .qs{display:flex;flex-wrap:wrap;gap:8px;}
 .attr{font-size:11px;color:var(--tx3);margin-top:14px;line-height:1.6;}
 .near-h{font-size:14px;font-weight:700;margin:16px 0 4px;}
@@ -362,10 +381,10 @@ async function handleIconFile(input){
 let S={projects:[],cur:null};
 let MODE='local';       // local: 端末内で編集可 / locked: 閲覧専用（公開データ）
 let EMBEDDED_ICON=false;
-const UI={spotVenue:'',radius:500,nearCat:'',near:null,geo:null,spotCat:'all',admin:false,view:'main',tab:'plan',kind:'all',scope:'cur',selMode:false,sel:new Set()};
+const UI={q:'',spotVenue:'',radius:500,nearCat:'',near:null,geo:null,spotCat:'all',admin:false,view:'main',tab:'plan',kind:'all',scope:'cur',selMode:false,sel:new Set()};
 
 function seed(){
-  const it=(title,kind,date,o={})=>Object.assign({id:uid(),title,kind,status:'before',date,time:'',venue:'',price:0,paid:0,links:[],note:''},o);
+  const it=(title,kind,date,o={})=>Object.assign({id:uid(),title,kind,status:'before',date,time:'',venue:'',price:0,paid:0,links:[],note:'',cast:[]},o);
   const p={id:uid(),name:'hololive SUPER EXPO',sub:'幕張メッセ',color:'#1D9E75',
     items:[
       it('hololive SUPER EXPO 2026 DAY1','event','2026-03-06',{price:9680,venue:'幕張メッセ'}),
@@ -395,10 +414,11 @@ function seed(){
     ]};
   return {projects:[p],cur:p.id};
 }
+function normCast(c){const a=Array.isArray(c)?c:String(c||'').split(/[,、，\n]/);return [...new Set(a.map(x=>String(x).trim()).filter(Boolean))];}
 function normalize(d){
   const projects=(d&&Array.isArray(d.projects)?d.projects:[]).map(p=>({
     id:p.id||uid(),name:p.name||'無題のイベント',sub:p.sub||'',color:p.color||COLORS[0],
-    items:(p.items||[]).map(i=>({id:i.id||uid(),title:i.title||'',kind:KINDS[i.kind]?i.kind:'other',status:STATUS[i.status]?i.status:'before',date:i.date||'',time:i.time||'',venue:i.venue||'',price:Number(i.price)||0,paid:Number(i.paid)||0,links:(i.links||[]).filter(l=>l&&l.url),note:i.note||''})),
+    items:(p.items||[]).map(i=>({id:i.id||uid(),title:i.title||'',kind:KINDS[i.kind]?i.kind:'other',status:STATUS[i.status]?i.status:'before',date:i.date||'',time:i.time||'',venue:i.venue||'',price:Number(i.price)||0,paid:Number(i.paid)||0,links:(i.links||[]).filter(l=>l&&l.url),note:i.note||'',cast:normCast(i.cast)})),
     payments:Array.isArray(p.payments)?p.payments.map(x=>({id:x.id||uid(),title:x.title||'',kind:KINDS[x.kind]?x.kind:'other',amount:Number(x.amount)||0,paid:Number(x.paid)||0,method:x.method||'',links:(x.links||[]).filter(l=>l&&l.url),note:x.note||'',cancel:!!x.cancel})):null,
     baseVenue:p.baseVenue||'',
     spots:(p.spots||[]).map(x=>({id:x.id||uid(),name:x.name||'',cat:SPOTS[x.cat]?x.cat:'other',place:x.place||'',access:x.access||'',hours:x.hours||'',note:x.note||'',links:(x.links||[]).filter(l=>l&&l.url)})),
@@ -468,7 +488,7 @@ function startEnd(i,hours){
 }
 function gcalUrl(i){
   if(!i.date||i.status==='cancel')return '';
-  const r=startEnd(i,2),det=[P().name,i.note].filter(Boolean).join('\n');
+  const r=startEnd(i,2),det=[P().name,(i.cast&&i.cast.length)?'出演: '+i.cast.join('、'):'',i.note].filter(Boolean).join('\n');
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(i.title)+'&dates='+r.s+'/'+r.e+'&location='+encodeURIComponent(i.venue||'')+'&details='+encodeURIComponent(det);
 }
 function calItems(p,scope){const l=p.items.filter(i=>i.date&&i.status!=='cancel');return sortItems(scope==='main'?l.filter(i=>i.kind==='event'||i.kind==='stage'):l);}
@@ -483,7 +503,7 @@ function buildIcs(p,list,hours,alarm){
     if(r.allDay)L.push('DTSTART;VALUE=DATE:'+r.s,'DTEND;VALUE=DATE:'+r.e);else L.push('DTSTART:'+r.s,'DTEND:'+r.e);
     L.push('SUMMARY:'+icsEsc(i.title));
     if(i.venue)L.push('LOCATION:'+icsEsc(i.venue));
-    const desc=[p.name+(p.sub?'（'+p.sub+'）':''),STATUS[i.status],i.price>0?'料金 '+fmt(i.price):'',i.note].concat(i.links.map(l=>(l.label?l.label+': ':'')+l.url)).filter(Boolean).join('\n');
+    const desc=[p.name+(p.sub?'（'+p.sub+'）':''),STATUS[i.status],i.price>0?'料金 '+fmt(i.price):'',(i.cast&&i.cast.length)?'出演: '+i.cast.join('、'):'',i.note].concat(i.links.map(l=>(l.label?l.label+': ':'')+l.url)).filter(Boolean).join('\n');
     L.push('DESCRIPTION:'+icsEsc(desc));
     if(alarm)L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+icsEsc(i.title),'TRIGGER:'+(r.allDay?'-PT15H':'-PT1H'),'END:VALARM');
     L.push('END:VEVENT');
@@ -646,7 +666,9 @@ function heroModal(){
   const list=sortItems(p.items.filter(i=>i.status!=='cancel'));
   openModal(`<h3>🎯 トップの表示を変更</h3><p class="help" style="margin:0 0 12px">この設定は<b>この端末だけ</b>に保存され、他の人の表示には影響しません。</p><div class="radios">${opt('auto','自動（一番近い予定）','今日以降でいちばん早いイベント・ステージを表示')}${opt('project','イベント全体','名称・期間・開催までの日数')}${list.map(i=>opt(i.id,esc(KINDS[i.kind].ic+' '+i.title),i.date?esc(dlabel(i.date).md+dlabel(i.date).dow+(i.time?' '+i.time:'')):'日程未定')).join('')}</div><div class="mrow"><button class="btn ghost" data-act="closemodal">キャンセル</button><button class="btn" data-act="savehero">表示する</button></div>`);
 }
-function visibleItems(p){return sortItems(p.items.filter(i=>UI.kind==='all'||i.kind===UI.kind));}
+function hitQ(i){const q=UI.q.trim().toLowerCase();if(!q)return true;return [i.title,i.venue,i.note].concat(i.cast||[]).join('\n').toLowerCase().includes(q);}
+function allCast(p){const c={};p.items.forEach(i=>(i.cast||[]).forEach(n=>{c[n]=(c[n]||0)+1;}));return Object.keys(c).sort((a,b)=>c[b]-c[a]||a.localeCompare(b,'ja'));}
+function visibleItems(p){return sortItems(p.items.filter(i=>(UI.kind==='all'||i.kind===UI.kind)&&hitQ(i)));}
 function selbarHtml(p){
   const vis=visibleItems(p),all=vis.length&&vis.every(i=>UI.sel.has(i.id));
   return `<div class="selbar"><span class="n">${UI.sel.size}件選択</span><button data-act="selall" style="background:var(--bg);color:var(--tx)">${all?'全解除':'全選択'}</button><select id="bulk-status" aria-label="状況を一括変更"><option value="">状況変更</option>${STATUS_ORDER.map(k=>`<option value="${k}">${STATUS[k]}</option>`).join('')}</select><button data-act="seldel" style="background:var(--danger);color:#fff">削除</button></div>`;
@@ -665,18 +687,23 @@ function planHtml(p){
     else head=`<div class="day-h"><span class="day-d" style="font-size:17px">日程未定</span></div>`;
     return `<div class="day">${head}<div class="items">${groups[k].map(itemHtml).join('')}</div></div>`;
   }).join('');
-  const calRow=(!UI.selMode&&p.items.some(i=>i.date&&i.status!=='cancel'))?'<div class="cal-row"><button class="tbtn" data-act="calmodal">📅 カレンダーに追加（.ics）</button></div>':'';
-  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${calRow}${filters}${days||`<div class="empty">まだ予定がありません${ed?'<br>「＋ 予定を追加」から登録しましょう':''}</div>`}</div>`;
+  const calBtn=p.items.some(i=>i.date&&i.status!=='cancel')?'<button class="tbtn" data-act="calmodal">📅 カレンダーに追加（.ics）</button>':'';
+  const rosBtn=allCast(p).length?'<button class="tbtn" data-act="roster">🎤 出演者から探す</button>':'';
+  const impBtn=ed?'<button class="tbtn" data-act="importmodal">📷 画像・テキストから追加</button>':'';
+  const calRow=(!UI.selMode&&(calBtn||impBtn||rosBtn))?`<div class="cal-row">${calBtn}${rosBtn}${impBtn}</div>`:'';
+  const srch=`<div class="srch"><input type="search" id="q-input" placeholder="🔍 予定・出演者・会場・メモを検索" value="${esc(UI.q)}" autocomplete="off"></div>`;
+  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${calRow}${srch}${filters}${days||`<div class="empty">${UI.q.trim()?'「'+esc(UI.q.trim())+'」に一致する予定はありません':'まだ予定がありません'+(ed?'<br>「＋ 予定を追加」から登録しましょう':'')}</div>`}</div>`;
 }
 function itemHtml(i){
   const ed=canEdit(),k=KINDS[i.kind],sm=UI.selMode&&ed,cal=gcalUrl(i);
   const links=i.links.map(l=>{const u=safeUrl(l.url);if(!u)return '';const t=LTYPES[ltype({url:u,type:l.type})];return `<a class="ilink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t.ic} ${esc(l.label||t.l)}</a>`;}).join('');
   const pay=i.price>0?(i.paid>=i.price?'<span class="chip pay-full">支払済</span>':i.paid>0?`<span class="chip pay-part">一部支払 ${fmt(i.paid)}</span>`:'<span class="chip pay-none">未払い</span>'):'';
   const stChip=ed&&!sm?`<button class="chip st-${i.status}" data-act="cycle" data-id="${i.id}" title="タップで切替">${STATUS[i.status]} ⟳</button>`:`<span class="chip st-${i.status}">${STATUS[i.status]}</span>`;
-  return `<article class="item is-${i.status}${sm?' selmode':''}${sm&&UI.sel.has(i.id)?' sel':''}"${sm?` data-act="toggle" data-id="${i.id}"`:''}>${sm?`<span class="chk">${UI.sel.has(i.id)?'✓':''}</span>`:''}<div class="item-ic" style="--kc:${k.c}">${k.ic}</div><div class="item-b">
+  const nc=(i.cast||[]).length;
+  return `<article class="item is-${i.status}${sm?' selmode':''}${sm&&UI.sel.has(i.id)?' sel':''}${sm?'':' tap'}" ${sm?`data-act="toggle"`:`data-act="detail"`} data-id="${i.id}">${sm?`<span class="chk">${UI.sel.has(i.id)?'✓':''}</span>`:''}<div class="item-ic" style="--kc:${k.c}">${k.ic}</div><div class="item-b">
     <div class="item-top"><div class="item-t">${esc(i.title)}</div>${i.time?`<span class="item-time">${esc(i.time)}</span>`:''}</div>
     <div class="item-meta">${stChip}${pay}${i.price>0?`<span class="price">${fmt(i.price)}</span>`:''}${i.venue?`<a class="venue" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(i.venue)}" target="_blank" rel="noopener noreferrer">📍${esc(i.venue)}</a>`:''}</div>
-    ${(links||cal)&&!sm?`<div class="ilinks">${links}${cal?`<a class="ilink cal" href="${esc(cal)}" target="_blank" rel="noopener noreferrer">📅 カレンダー</a>`:''}</div>`:''}${i.note?`<div class="note">${esc(i.note)}</div>`:''}</div>
+    ${(links||cal)&&!sm?`<div class="ilinks">${links}${cal?`<a class="ilink cal" href="${esc(cal)}" target="_blank" rel="noopener noreferrer">📅 カレンダー</a>`:''}</div>`:''}${i.note?`<div class="note">${esc(i.note)}</div>`:''}${nc?`<div class="castmini">🎤 出演 ${nc}名 ・タップで一覧</div>`:''}</div>
     ${ed&&!sm?`<button class="edit-b" data-act="edit" data-id="${i.id}" aria-label="編集">✎</button>`:''}</article>`;
 }
 /* ===== 周辺施設の自動検索（OpenStreetMap: Nominatim + Overpass） ===== */
@@ -923,6 +950,7 @@ function manageHtml(p){
     <div class="mrow" style="flex-direction:column"><button class="btn" data-act="sharelink">🔗 閲覧用リンクを作る</button><button class="btn ghost" data-act="dlhtml">⬇ 閲覧用HTMLを保存（アイコン入り）</button></div>
     <p class="help">閲覧用は編集ボタンや管理画面が一切ない「見るだけ」のページです。<b>HTMLを保存</b>してWebに置くと、設定したアイコンもそのまま使えます。</p>
   </div>
+  <div class="card"><div class="card-h"><span class="card-t">公式情報の取り込み</span></div><div class="sub" style="margin-bottom:12px;line-height:1.6">hololive SUPER EXPO 2027 公式の出演者リスト（4ステージ分）を、現在のイベントにステージ予定として追加します。既に同名・同日のステージがあれば出演者のみ更新します。</div><button class="btn" data-act="hlimport">🎤 2027 ステージ出演者を取り込む</button></div>
   <div class="card"><div class="card-h"><span class="card-t">バックアップ・セキュリティ</span></div>
     <div class="mrow" style="margin-top:0"><button class="btn ghost" data-act="dljson">⬇ 書き出し</button><button class="btn ghost" data-act="impjson">⬆ 読み込み</button></div>
     <input type="file" id="imp-input" accept="application/json,.json" style="display:none">
@@ -934,19 +962,67 @@ function manageHtml(p){
 
 /* ===== モーダル ===== */
 function openModal(html){$('#modal-root').innerHTML=`<div class="ov" data-act="closeov"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;document.body.classList.add('noscroll');}
-function closeModal(){$('#modal-root').innerHTML='';document.body.classList.remove('noscroll');}
+function closeModal(){IMP.open=false;$('#modal-root').innerHTML='';document.body.classList.remove('noscroll');}
 const kindOpts=sel=>Object.keys(KINDS).map(k=>`<option value="${k}"${k===sel?' selected':''}>${KINDS[k].ic} ${KINDS[k].l}</option>`).join('');
 const statusOpts=sel=>STATUS_ORDER.map(k=>`<option value="${k}"${k===sel?' selected':''}>${STATUS[k]}</option>`).join('');
 const ltypeOpts=sel=>`<option value="auto"${(!sel||sel==='auto')?' selected':''}>自動判定</option>`+Object.keys(LTYPES).map(k=>`<option value="${k}"${k===sel?' selected':''}>${LTYPES[k].ic} ${LTYPES[k].l}</option>`).join('');
 function linkRow(l){l=l||{};return `<div class="lr"><input type="text" class="l-label" placeholder="表示名（例：ホテル予約）" value="${esc(l.label||'')}"><input type="url" class="l-url" inputmode="url" placeholder="https://..." value="${esc(l.url||'')}"><button class="x" data-act="rmrow" aria-label="削除">×</button></div>`;}
+
+/* ===== ステージ詳細・出演者 ===== */
+const HL_CAST='https://hololivesuperexpo.hololivepro.com/2027/fes/cast/';
+const HL27=[
+ {t:'hololive STAGE1',d:'2027-03-12',c:'白上フブキ,夏色まつり,さくらみこ,百鬼あやめ,大空スバル,姫森ルーナ,アイラニ・イオフィフティーン,桃鈴ねね,尾丸ポルカ,一伊那尓栖,アーニャ・メルフィッサ,パヴォリア・レイネ,風真いろは,古石ビジュー,フワワ・アビスガード,音乃瀬奏,一条莉々華,儒烏風亭らでん,轟はじめ,ラオーラ・パンテーラ',u:HL_CAST+'?tab=stage1'},
+ {t:'hololive Dreams STAGE',d:'2027-03-13',c:'ときのそら,ロボ子さん,白上フブキ,夏色まつり,さくらみこ,大空スバル,AZKi,大神ミオ,不知火フレア,白銀ノエル,宝鐘マリン,角巻わため,姫森ルーナ,尾丸ポルカ,一伊那尓栖,クレイジー・オリー,IRyS,ハコス・ベールズ,鷹嶺ルイ,博衣こより,風真いろは,ベスティア・ゼータ,こぼ・かなえる,シオリ・ノヴェラ,ネリッサ・レイヴンクロフト,音乃瀬奏,儒烏風亭らでん,轟はじめ',u:HL_CAST},
+ {t:'hololive STAGE2',d:'2027-03-13',c:'ロボ子さん,赤井はあと,癒月ちょこ,猫又おかゆ,戌神ころね,兎田ぺこら,白銀ノエル,宝鐘マリン,雪花ラミィ,獅白ぼたん,小鳥遊キアラ,クレイジー・オリー,オーロ・クロニー,ラプラス・ダークネス,博衣こより,ベスティア・ゼータ,カエラ・コヴァルスキア,こぼ・かなえる,シオリ・ノヴェラ,ジジ・ムリン,セシリア・イマーグリーン',u:HL_CAST+'?tab=stage2'},
+ {t:'hololive STAGE3',d:'2027-03-14',c:'ときのそら,星街すいせい,アキ・ローゼンタール,AZKi,大神ミオ,不知火フレア,角巻わため,アユンダ・リス,ムーナ・ホシノヴァ,森カリオペ,IRyS,ハコス・ベールズ,鷹嶺ルイ,ネリッサ・レイヴンクロフト,エリザベス・ローズ・ブラッドフレイム,響咲リオナ,虎金妃笑虎,水宮枢,輪堂千速,綺々羅々ヴィヴィ',u:HL_CAST}
+];
+function hlImport(){
+  const p=P();let add=0,upd=0;
+  HL27.forEach(h=>{
+    const cast=h.c.split(',');
+    let it=p.items.find(x=>x.kind==='stage'&&x.title===h.t&&x.date===h.d);
+    if(it){it.cast=cast;upd++;if(!it.links.some(l=>l.url===h.u))it.links.push({label:'公式 出演者',url:h.u,type:'official'});}
+    else{p.items.push({id:uid(),title:h.t,kind:'stage',status:'before',date:h.d,time:'',venue:'幕張メッセ',price:0,paid:0,links:[{label:'公式 出演者',url:h.u,type:'official'}],note:'時間は公式発表後に入力。日付(DAY割当)は公式で要確認',cast});add++;}
+  });
+  save();closeModal();render();toast(`ステージ${add}件を追加、${upd}件を更新しました`);
+}
+function detailModal(id){
+  const i=P().items.find(x=>x.id===id);if(!i)return;
+  const k=KINDS[i.kind],ed=canEdit();
+  const d=i.date?dlabel(i.date):null;
+  const links=i.links.map(l=>{const u=safeUrl(l.url);if(!u)return '';const t=LTYPES[ltype({url:u,type:l.type})];return `<a class="ilink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t.ic} ${esc(l.label||t.l)}</a>`;}).join('');
+  const cast=(i.cast||[]).map(n=>`<button class="fchip cn" data-act="talent" data-n="${esc(n)}">${esc(n)}</button>`).join('');
+  const row=(l,v)=>`<div class="drow"><div class="dl">${l}</div><div class="dv">${v}</div></div>`;
+  openModal(`<h3>${k.ic} ${esc(i.title)}</h3>
+   ${row('日時',(d?d.md+' '+d.dow:'日程未定')+(i.time?' '+esc(i.time)+'〜':' <span class="mut">時間未定</span>'))}
+   ${row('会場',i.venue?`<a class="venue" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(i.venue)}" target="_blank" rel="noopener noreferrer">📍${esc(i.venue)}</a>`:'<span class="mut">未設定</span>')}
+   ${row(`出演者${(i.cast||[]).length?`（${i.cast.length}名）`:''}`,cast?`<div class="castwrap">${cast}</div><div class="mut" style="margin-top:6px;font-size:12px">名前をタップすると、その人の出演予定が見られます</div>`:'<span class="mut">未登録</span>')}
+   ${row('メモ',i.note?`<div style="white-space:pre-wrap">${esc(i.note)}</div>`:'<span class="mut">なし</span>')}
+   ${row('リンク',links?`<div class="ilinks" style="margin:0">${links}</div>`:'<span class="mut">なし</span>')}
+   <div class="mrow" style="margin-top:16px"><button class="btn ghost" data-act="closemodal">閉じる</button>${ed?`<button class="btn" data-act="edit" data-id="${i.id}">✎ 編集</button>`:''}</div>`);
+}
+function talentModal(n,back){
+  const p=P(),list=sortItems(p.items.filter(i=>(i.cast||[]).includes(n)));
+  openModal(`<h3>🎤 ${esc(n)}</h3><div class="mut" style="margin-bottom:10px">${list.length}件のステージ・予定に出演</div>
+   ${list.map(i=>{const d=i.date?dlabel(i.date):null;return `<button class="trow" data-act="detail" data-id="${i.id}"><span class="trd">${d?d.md+'<small>'+d.dow+'</small>':'未定'}</span><span class="trt">${esc(i.title)}${i.time?`<small>${esc(i.time)}</small>`:''}${i.venue?`<small>📍${esc(i.venue)}</small>`:''}</span></button>`;}).join('')||'<div class="empty">出演予定なし</div>'}
+   <div class="mrow" style="margin-top:14px"><button class="btn ghost" data-act="roster">出演者一覧へ</button><button class="btn" data-act="closemodal">閉じる</button></div>`);
+}
+function rosterModal(){
+  const p=P(),cnt={};p.items.forEach(i=>(i.cast||[]).forEach(n=>{cnt[n]=(cnt[n]||0)+1;}));
+  const names=allCast(p);
+  openModal(`<h3>🎤 出演者から探す</h3><div class="srch" style="margin-bottom:10px"><input type="search" id="r-q" placeholder="名前を入力" autocomplete="off"></div>
+   <div class="castwrap" id="r-list">${names.map(n=>`<button class="fchip cn" data-act="talent" data-n="${esc(n)}" data-s="${esc(n.toLowerCase())}">${esc(n)}<small> ${cnt[n]}</small></button>`).join('')}</div>
+   <div class="mrow" style="margin-top:14px"><button class="btn" data-act="closemodal">閉じる</button></div>`);
+}
 function itemModal(id){
-  const i=id?P().items.find(x=>x.id===id):{title:'',kind:'event',status:'before',date:'',time:'',venue:'',price:0,paid:0,links:[],note:''};
+  const i=id?P().items.find(x=>x.id===id):{title:'',kind:'event',status:'before',date:'',time:'',venue:'',price:0,paid:0,links:[],note:'',cast:[]};
   openModal(`<h3>${id?'予定を編集':'予定を追加'}</h3><div data-form="item" data-id="${id||''}">
     <div class="fld"><label>タイトル *</label><input type="text" id="f-title" value="${esc(i.title)}" placeholder="例：DAY1、ホテル、往路 など"></div>
     <div class="two"><div class="fld"><label>種類</label><select id="f-kind">${kindOpts(i.kind)}</select></div><div class="fld"><label>状況</label><select id="f-status">${statusOpts(i.status)}</select></div></div>
     <div class="two"><div class="fld"><label>日付</label><input type="date" id="f-date" value="${esc(i.date)}"></div><div class="fld"><label>開始時間</label><input type="time" id="f-time" value="${esc(i.time)}"></div></div>
     <div class="fld"><label>会場・場所（タップで地図が開きます）</label><input type="text" id="f-venue" value="${esc(i.venue)}" placeholder="例：幕張メッセ"></div>
     <div class="two"><div class="fld"><label>料金（円）</label><input type="number" id="f-price" inputmode="numeric" min="0" value="${i.price||''}" placeholder="0"></div><div class="fld"><label>支払済み（円）</label><input type="number" id="f-paid" inputmode="numeric" min="0" value="${i.paid||''}" placeholder="0"><button type="button" class="inline-btn" data-act="paidfull">全額支払済にする</button></div></div>
+    <div class="fld"><label>出演者（カンマ・改行区切り）</label><textarea id="f-cast" rows="3" placeholder="例：ときのそら、星街すいせい">${esc((i.cast||[]).join('、'))}</textarea></div>
     <div class="fld"><label>リンク（公式HP・ホテル・Googleドキュメント等）</label><div id="f-links">${i.links.map(linkRow).join('')}</div><button type="button" class="inline-btn" data-act="addlinkrow">＋ リンクを追加</button></div>
     <div class="fld"><label>メモ</label><textarea id="f-note" placeholder="予約番号・注意事項など">${esc(i.note)}</textarea></div>
     <div class="mrow"><button class="btn ghost" data-act="closemodal">キャンセル</button><button class="btn" data-act="saveitem">保存</button></div>
@@ -956,7 +1032,7 @@ function saveItem(){
   const f=$('[data-form=item]');const id=f.dataset.id;
   const title=$('#f-title').value.trim();if(!title){$('#f-title').focus();toast('タイトルを入力してください');return;}
   const links=[...document.querySelectorAll('#f-links .lr')].map(r=>({label:r.querySelector('.l-label').value.trim(),url:safeUrl(r.querySelector('.l-url').value),type:'auto'})).filter(l=>l.url);
-  const o={title,kind:$('#f-kind').value,status:$('#f-status').value,date:$('#f-date').value,time:$('#f-time').value,venue:$('#f-venue').value.trim(),price:Math.max(0,Number($('#f-price').value)||0),paid:Math.max(0,Number($('#f-paid').value)||0),links,note:$('#f-note').value.trim()};
+  const o={title,kind:$('#f-kind').value,status:$('#f-status').value,date:$('#f-date').value,time:$('#f-time').value,venue:$('#f-venue').value.trim(),price:Math.max(0,Number($('#f-price').value)||0),paid:Math.max(0,Number($('#f-paid').value)||0),links,note:$('#f-note').value.trim(),cast:normCast($('#f-cast').value)};
   if(id)Object.assign(P().items.find(x=>x.id===id),o);else P().items.push(Object.assign({id:uid()},o));
   save();closeModal();render();
 }
@@ -987,6 +1063,161 @@ function loginModal(){
 const hashPin=s=>{let h=5381;for(const c of s)h=((h<<5)+h+c.charCodeAt(0))|0;return String(h);};
 
 /* ===== イベント処理 ===== */
+/* ===== 画像・テキストからの取り込み（端末内で文字認識。画像は外部に送信しません） ===== */
+const TESS_SRC='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const LANG_PATHS=['https://cdn.jsdelivr.net/npm/@tesseract.js-data/jpn@1.0.0/4.0.0_best_int','https://tessdata.projectnaptha.com/4.0.0'];
+const IMP={open:false,mode:'image',stage:'pick',raw:'',img:'',prog:0,msg:'',err:'',f:null,worker:null};
+function normOcr(t){
+  const s=String(t).replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/：/g,':').replace(/／/g,'/').replace(/．/g,'.').replace(/，/g,',').replace(/￥/g,'¥').replace(/　/g,' ');
+  return s.split('\n').map(l=>l.trim().replace(/(^|\s)[_＿]+/g,'$1').trim().replace(/(^|[^\d,.:\/])(\d(?: \d){2,})(?![\d,.:\/])/g,(m,a,b)=>a+b.replace(/ /g,'')).replace(/([぀-ヿ㐀-鿿])[ \t]+(?=[぀-ヿ㐀-鿿\d¥(（])/g,'$1').replace(/([\d,.:\/¥)）])[ \t]+(?=[぀-ヿ㐀-鿿])/g,'$1')).filter(Boolean);
+}
+function impDates(lines){
+  const txt=lines.join('\n'),now=new Date(),ty=now.getFullYear(),out=[],seen=new Set();
+  const add=(y,m,d,inf)=>{
+    m=+m;d=+d;if(m<1||m>12||d<1||d>31)return;
+    if(!y){y=ty;if(new Date(ty,m-1,d)<new Date(now.getTime()-60*864e5))y=ty+1;}
+    const dt=new Date(y,m-1,d);if(dt.getMonth()!==m-1)return;
+    const k=y+'-'+pad(m)+'-'+pad(d);if(!seen.has(k)){seen.add(k);out.push({v:k,inf:!!inf});}
+  };
+  let m;const r1=/(20\d{2})\s*[年\/.\-]\s*(\d{1,2})\s*[月\/.\-]\s*(\d{1,2})/g;
+  while((m=r1.exec(txt)))add(+m[1],m[2],m[3],false);
+  const rest=txt.replace(r1,' ');
+  const r2=/(?:^|[^\d\/.\-])(\d{1,2})\s*月\s*(\d{1,2})\s*日/g;
+  while((m=r2.exec(rest)))add(0,m[1],m[2],true);
+  const r3=/(?:^|[^\d\/.\-])(\d{1,2})\s*[\/.]\s*(\d{1,2})\s*[\(（]\s*[月火水木金土日]/g;
+  while((m=r3.exec(rest)))add(0,m[1],m[2],true);
+  return out;
+}
+function impTimes(lines){
+  const txt=lines.join('\n'),out=[],seen=new Set();
+  const add=(h,mi,label)=>{h=+h;mi=+(mi||0);if(h>29||mi>59)return;const v=pad(h>=24?h-24:h)+':'+pad(mi);if(seen.has(v))return;seen.add(v);out.push({v,label:label||''});};
+  const L='(開場|OPEN|Open|開演|開始|START|Start|終演|集合|出発|発車|到着|チェックイン|チェックアウト|入場)';
+  let m;
+  const a=new RegExp(L+'[^\\d\\n]{0,8}(\\d{1,2}):(\\d{2})','g');while((m=a.exec(txt)))add(m[2],m[3],m[1]);
+  const b=new RegExp(L+'[^\\d\\n]{0,8}(\\d{1,2})時(?:(\\d{1,2})分?)?','g');while((m=b.exec(txt)))add(m[2],m[3],m[1]);
+  const c=/(?:^|[^\d:])(\d{1,2}):(\d{2})(?![\d:])/g;while((m=c.exec(txt)))add(m[1],m[2],'');
+  const d=/(\d{1,2})時(\d{1,2})?分?/g;while((m=d.exec(txt)))add(m[1],m[2],'');
+  return out;
+}
+function impAmounts(lines){
+  const map=new Map();
+  lines.forEach(l=>{
+    const re=/(?:¥|\\)\s*(\d{1,3}(?:,\d{3})+|\d{3,7})|(\d{1,3}(?:,\d{3})+|\d{3,7})\s*円/g;let m;
+    while((m=re.exec(l))){
+      const n=+(m[1]||m[2]).replace(/,/g,'');if(n<100||n>3000000)continue;
+      const pri=/合計|総額|お支払|請求|Total|TOTAL/.test(l)?2:/料金|金額|代金|チケット代|支払/.test(l)?1:0;
+      const prev=map.get(n);if(!prev||pri>prev.pri)map.set(n,{v:n,pri});
+    }
+  });
+  return [...map.values()].sort((a,b)=>b.pri-a.pri);
+}
+function impVenues(lines){
+  const out=[];
+  const add=v=>{v=String(v||'').replace(/^[\s:：]+/,'').trim();if(v.length>=2&&v.length<=40&&!/^\d{1,2}[:時]/.test(v)&&!out.includes(v))out.push(v);};
+  lines.forEach((l,i)=>{const m=l.match(/(?:会場名?|開催場所|開催会場|場所|VENUE|Venue)\s*[:：]?\s*(.*)$/);if(m){if(m[1]&&m[1].trim())add(m[1]);else if(lines[i+1])add(lines[i+1]);}});
+  const kw=/(ホール|アリーナ|ドーム|Zepp|ライブハウス|劇場|シアター|スタジアム|メッセ|センター|パーク|会館|フォーラム|武道館|Hall|HALL|ARENA|Arena|DOME|スクエア)/;
+  lines.forEach(l=>{if(kw.test(l)&&l.length<=40&&!/\d{1,2}:\d{2}|円|¥/.test(l))add(l);});
+  return out.slice(0,5);
+}
+function impTitle(lines,venues){
+  for(const l of lines){const m=l.match(/(?:公演名|イベント名|タイトル|公演|演目)\s*[:：]\s*(.+)$/);if(m&&m[1].trim().length>=2)return m[1].trim();}
+  const kw=/(LIVE|Live|ライブ|TOUR|Tour|ツアー|FES|フェス|EXPO|公演|コンサート|CONCERT|ワンマン|ファンミ)/;
+  const bad=/(\d{1,2}:\d{2}|円|¥|予約|番号|座席|会場|開場|開演|注文|領収|お支払|合計|http|@)/;
+  const c=lines.find(l=>kw.test(l)&&l.length>=4&&l.length<=60&&!bad.test(l));
+  if(c)return c;
+  return lines.find(l=>l.length>=4&&l.length<=50&&!bad.test(l)&&!/^\d/.test(l)&&!venues.includes(l))||'';
+}
+function impKind(t){
+  if(/(宿泊|ホテル|チェックイン|チェックアウト)/.test(t))return 'stay';
+  if(/(航空|搭乗|乗車|新幹線|発車|のぞみ|ひかり|こだま|高速バス|特急|フライト)/.test(t)&&!/(ライブ|公演|LIVE)/i.test(t))return 'move';
+  if(/(グッズ|物販)/.test(t))return 'goods';
+  return 'event';
+}
+function impParse(text){
+  const lines=normOcr(text),dates=impDates(lines),times=impTimes(lines),amts=impAmounts(lines),venues=impVenues(lines);
+  const tp=times.find(t=>/開演|開始|START|Start|出発|発車|チェックイン/.test(t.label))||times.find(t=>!/開場|OPEN|Open|入場|集合/.test(t.label))||times[0];
+  const note=lines.filter(l=>/(座席|席|整理番号|入場番号|番号|ブロック|ゲート|エリア|予約|受付|申込|注文)/.test(l)&&l.length<=60).slice(0,6).join('\n');
+  const kind=impKind(lines.join('\n'));
+  return {dates,times,amts,venues,title:impTitle(lines,venues)||({stay:'宿泊',move:'移動',goods:'グッズ'}[kind]||''),kind,note,
+    date:dates[0]?dates[0].v:'',time:tp?tp.v:'',price:amts[0]?amts[0].v:'',venue:venues[0]||'',target:dates.length?'item':'pay'};
+}
+function loadScript(src){return new Promise((res,rej)=>{const e=document.createElement('script');e.src=src;e.onload=res;e.onerror=()=>rej(new Error('読み取りエンジンを読み込めませんでした'));document.head.appendChild(e);});}
+function impLog(m){
+  const map={'loading tesseract core':'読み取りエンジンを準備中…','initializing tesseract':'準備中…','loading language traineddata':'日本語データを読み込み中…（初回のみ）','initializing api':'準備中…','recognizing text':'文字を読み取り中…'};
+  if(map[m.status])IMP.msg=map[m.status];if(typeof m.progress==='number')IMP.prog=m.progress;impProg();
+}
+function impProg(){const b=$('#imp-bar'),t=$('#imp-msg');if(b)b.style.width=Math.round(IMP.prog*100)+'%';if(t)t.textContent=IMP.msg;}
+async function impWorker(){
+  if(IMP.worker)return IMP.worker;
+  if(!window.Tesseract){IMP.msg='読み取りエンジンを読み込み中…';impProg();await loadScript(TESS_SRC);}
+  let err;
+  for(const lp of LANG_PATHS){
+    try{IMP.worker=await Tesseract.createWorker('jpn',1,{langPath:lp,logger:impLog});return IMP.worker;}catch(e){err=e;}
+  }
+  throw err;
+}
+async function impPrep(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('画像を開けませんでした'));i.src=url;});
+    const w=img.naturalWidth,h=img.naturalHeight,big=Math.max(w,h);
+    const k=big>2200?2200/big:big<1200?Math.min(3,1200/big):1;
+    const cv=document.createElement('canvas');cv.width=Math.round(w*k);cv.height=Math.round(h*k);
+    const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(img,0,0,cv.width,cv.height);
+    // 暗い背景（ダークモードのスクリーンショット）は白黒反転して読み取りやすくする
+    const sm=document.createElement('canvas');sm.width=48;sm.height=48;const sx=sm.getContext('2d');sx.drawImage(cv,0,0,48,48);
+    const d=sx.getImageData(0,0,48,48).data;let sum=0;for(let i=0;i<d.length;i+=4)sum+=(d[i]*0.3+d[i+1]*0.59+d[i+2]*0.11);
+    if(sum/(d.length/4)<110){cx.globalCompositeOperation='difference';cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.globalCompositeOperation='source-over';}
+    const th=document.createElement('canvas'),tk=480/Math.max(cv.width,1);th.width=480;th.height=Math.max(1,Math.round(cv.height*tk));th.getContext('2d').drawImage(cv,0,0,th.width,th.height);
+    return {canvas:cv,thumb:th.toDataURL('image/jpeg',0.6)};
+  }finally{URL.revokeObjectURL(url);}
+}
+async function impRunImage(file){
+  if(!file)return;
+  IMP.stage='busy';IMP.prog=0;IMP.msg='画像を準備中…';IMP.err='';impRender();
+  try{
+    const pr=await impPrep(file);IMP.img=pr.thumb;
+    const w=await impWorker();
+    IMP.msg='文字を読み取り中…';IMP.prog=0;impProg();
+    const r=await w.recognize(pr.canvas);
+    IMP.raw=(r&&r.data&&r.data.text)||'';
+    IMP.f=impParse(IMP.raw);IMP.stage='review';
+  }catch(e){IMP.stage='pick';IMP.err='読み取りに失敗しました：'+((e&&e.message)||e)+'。通信状況をご確認ください。「テキスト貼り付け」でも取り込めます。';}
+  impRender();
+}
+function impRender(){
+  if(!IMP.open)return;
+  const seg=`<div class="segb"><button class="fchip${IMP.mode==='image'?' on':''}" data-act="impmode" data-m="image">📷 画像</button><button class="fchip${IMP.mode==='text'?' on':''}" data-act="impmode" data-m="text">📝 テキスト貼り付け</button></div>`;
+  let body='';
+  if(IMP.stage==='busy'){
+    body=`${IMP.img?`<img class="imp-prev" src="${esc(IMP.img)}" alt="">`:''}<div class="prog"><i id="imp-bar"></i></div><p class="sub" id="imp-msg" style="text-align:center">${esc(IMP.msg)}</p><p class="help" style="text-align:center">画像は端末の中だけで処理され、外部には送信されません。</p><div class="mrow"><button class="btn ghost" data-act="closemodal">閉じる</button></div>`;
+  }else if(IMP.stage==='review'&&IMP.f){
+    const f=IMP.f,chip=(k,v,l)=>`<button type="button" class="fchip" data-act="impfill" data-f="${k}" data-v="${esc(v)}">${esc(l)}</button>`;
+    const dc=f.dates.map(d=>chip('date',d.v,dlabel(d.v).md+dlabel(d.v).dow+(d.inf?'（年は推定）':''))).join('');
+    const tc=f.times.map(t=>chip('time',t.v,(t.label?t.label+' ':'')+t.v)).join('');
+    const ac=f.amts.map(a=>chip('price',a.v,'¥'+a.v.toLocaleString('ja-JP'))).join('');
+    const vc=f.venues.map(v=>chip('venue',v,v)).join('');
+    body=`${IMP.img?`<img class="imp-prev" src="${esc(IMP.img)}" alt="">`:''}
+    <p class="help" style="margin:0 0 12px">読み取り結果には誤りが含まれることがあります。<b>内容を確認・修正してから</b>保存してください。候補のボタンで入力を差し替えられます。</p>
+    <div class="fld"><span class="lbl">追加先</span><div class="radios"><label class="radio"><input type="radio" name="itarget" value="item"${f.target==='item'?' checked':''}><span><b>予定として追加</b><small>日付・時間・会場つき（料金も入ります）</small></span></label><label class="radio"><input type="radio" name="itarget" value="pay"${f.target==='pay'?' checked':''}><span><b>支払いとして追加</b><small>日付なしの支払い項目（宿泊費など）</small></span></label></div></div>
+    <div class="fld"><label>タイトル *</label><input type="text" id="i-title" value="${esc(f.title)}"></div>
+    <div class="fld"><label>種類</label><select id="i-kind">${kindOpts(f.kind)}</select></div>
+    <div class="two"><div class="fld"><label>日付</label><input type="date" id="i-date" value="${esc(f.date)}"></div><div class="fld"><label>開始時間</label><input type="time" id="i-time" value="${esc(f.time)}"></div></div>
+    ${(dc||tc)?`<div class="cand" style="margin:-6px 0 14px">${dc}${tc}</div>`:''}
+    <div class="fld"><label>会場・場所</label><input type="text" id="i-venue" value="${esc(f.venue)}">${vc?`<div class="cand">${vc}</div>`:''}</div>
+    <div class="fld"><label>料金（円）</label><input type="number" id="i-price" inputmode="numeric" min="0" value="${f.price||''}" placeholder="0">${ac?`<div class="cand">${ac}</div>`:''}</div>
+    <div class="fld"><label>メモ（座席・整理番号・予約番号など）</label><textarea id="i-note">${esc(f.note)}</textarea></div>
+    <details class="raw"><summary>読み取った文字を確認・修正する</summary><textarea id="i-raw" style="min-height:140px">${esc(IMP.raw)}</textarea><button type="button" class="btn sm ghost" data-act="impreparse" style="margin-top:8px">この文章で再解析</button></details>
+    <div class="mrow"><button class="btn ghost" data-act="impback">やり直す</button><button class="btn" data-act="impsave">追加する</button></div>`;
+  }else{
+    body=IMP.mode==='image'
+      ?`<label class="drop" for="imp-file"><span>📷</span>画像を選ぶ（チケット・予約画面のスクリーンショットなど）<small>画像は端末の中だけで処理され、外部には送信されません。<br>初回のみ、読み取りエンジン（数MB）をダウンロードします。</small><input id="imp-file" type="file" accept="image/*" style="display:none"></label>`
+      :`<div class="fld"><label>予約確認メールや公式ページの文章を貼り付け</label><textarea id="imp-text" style="min-height:180px" placeholder="例：2027年3月6日(土) 開演18:00 / 会場 ○○ホール / チケット代 ¥8,800">${esc(IMP.raw)}</textarea></div><button class="btn block" data-act="impparse">内容を解析する</button>`;
+    body=seg+(IMP.err?`<p class="help" style="color:var(--danger);margin:0 0 10px">${esc(IMP.err)}</p>`:'')+body+`<div class="mrow"><button class="btn ghost" data-act="closemodal">閉じる</button></div>`;
+  }
+  openModal(`<h3>📷 画像・テキストから追加</h3>${body}`);
+  IMP.open=true;
+}
 const A={
   tab:el=>{UI.tab=el.dataset.t;render();window.scrollTo({top:0});},
   kind:el=>{UI.kind=el.dataset.k;render();},
@@ -1024,6 +1255,19 @@ const A={
     if(P().spots.some(y=>y.name===x.name&&y.cat===n.spot)){toast('すでにメモに登録されています');return;}
     P().spots.push({id:uid(),name:x.name,cat:n.spot,place:x.lat+','+x.lon,access:(UI.near.venue==='__geo__'?'現在地':UI.near.venue)+'から徒歩約'+Math.max(1,Math.round(x.dist/80))+'分',hours:x.hours,note:'',links:[]});
     save();render();toast('スポットメモに追加しました');},
+  importmodal:()=>{IMP.open=true;IMP.stage='pick';IMP.err='';IMP.raw='';IMP.img='';IMP.f=null;impRender();},
+  impmode:el=>{IMP.mode=el.dataset.m;IMP.err='';impRender();},
+  impparse:()=>{IMP.raw=($('#imp-text')||{}).value||'';if(!IMP.raw.trim()){toast('文章を貼り付けてください');return;}IMP.img='';IMP.f=impParse(IMP.raw);IMP.stage='review';impRender();},
+  impreparse:()=>{IMP.raw=$('#i-raw').value;IMP.f=impParse(IMP.raw);impRender();},
+  impback:()=>{IMP.stage='pick';IMP.err='';impRender();},
+  impfill:el=>{const m={date:'#i-date',time:'#i-time',venue:'#i-venue',price:'#i-price'};const t=$(m[el.dataset.f]);if(t)t.value=el.dataset.v;},
+  impsave:()=>{
+    const title=$('#i-title').value.trim();if(!title){$('#i-title').focus();toast('タイトルを入力してください');return;}
+    const target=(document.querySelector('input[name=itarget]:checked')||{}).value||'item';
+    const kind=$('#i-kind').value,price=Math.max(0,Number($('#i-price').value)||0),note=$('#i-note').value.trim(),date=$('#i-date').value,venue=$('#i-venue').value.trim();
+    if(target==='pay')P().payments.push({id:uid(),title,kind,amount:price,paid:0,method:'',links:[],note:[note,date?'日付: '+date:'',venue?'会場: '+venue:''].filter(Boolean).join('\n'),cancel:false});
+    else P().items.push({id:uid(),title,kind,status:'before',date,time:$('#i-time').value,venue,price,paid:0,links:[],note});
+    save();closeModal();render();toast(target==='pay'?'支払いに追加しました':'予定に追加しました');},
   addspot:()=>spotModal(null),
   editspot:el=>spotModal(el.dataset.id),
   savespot:()=>saveSpot(),
@@ -1044,6 +1288,10 @@ const A={
   herochange:()=>heroModal(),
   savehero:()=>{const r=document.querySelector('input[name=hero]:checked');if(r){setHeroPref(P(),r.value);toast('この端末の表示を変更しました');}closeModal();render();},
   edit:el=>itemModal(el.dataset.id),
+  detail:el=>detailModal(el.dataset.id),
+  talent:el=>talentModal(el.dataset.n),
+  roster:()=>rosterModal(),
+  hlimport:()=>{if(confirm('公式の出演者リスト（STAGE1 / Dreams STAGE / STAGE2 / STAGE3）を、現在のイベントに取り込みます。よろしいですか？'))hlImport();},
   cycle:el=>{const i=P().items.find(x=>x.id===el.dataset.id);i.status=STATUS_ORDER[(STATUS_ORDER.indexOf(i.status)+1)%STATUS_ORDER.length];save();render();},
   saveitem:()=>saveItem(),
   delitem:el=>{if(!confirm('この予定を削除しますか？'))return;P().items=P().items.filter(x=>x.id!==el.dataset.id);save(true);closeModal();render();toastUndo('予定を削除しました');},
@@ -1079,12 +1327,16 @@ const A={
   closemodal:()=>closeModal(),
   closeov:(el,e)=>{if(e.target===el)closeModal();}
 };
-document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el)return;const f=A[el.dataset.act];if(f){f(el,e);}});
+document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el)return;if(el.dataset.act==='detail'&&e.target.closest('a'))return;const f=A[el.dataset.act];if(f){f(el,e);}});
+document.addEventListener('input',e=>{const t=e.target;
+  if(t.id==='q-input'){UI.q=t.value;const c=t.selectionStart;render();const n=$('#q-input');if(n){n.focus();try{n.setSelectionRange(c,c);}catch(x){}}}
+  else if(t.id==='r-q'){const v=t.value.trim().toLowerCase();document.querySelectorAll('#r-list .cn').forEach(b=>{b.style.display=(!v||b.dataset.s.includes(v))?'':'none';});}});
 document.addEventListener('change',e=>{
   const t=e.target;
   if(t.id==='app-icon-input')return handleIconFile(t);
   if(t.id==='imp-input')return importJson(t);
   if(t.name==='scope'){UI.scope=t.value;return;}
+  if(t.id==='imp-file'){const f=t.files&&t.files[0];t.value='';impRunImage(f);return;}
   if(t.id==='near-r'){UI.radius=Number(t.value)||500;if(UI.nearCat)runNear(UI.nearCat);else render();return;}
   if(t.id==='bulk-status'){if(!t.value)return;if(!UI.sel.size){toast('予定を選択してください');t.value='';return;}const n=UI.sel.size;P().items.forEach(i=>{if(UI.sel.has(i.id))i.status=t.value;});UI.selMode=false;UI.sel=new Set();save(true);render();toastUndo(n+'件の状況を変更しました');return;}
   if(!canEdit())return;
