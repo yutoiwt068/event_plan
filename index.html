@@ -101,6 +101,25 @@ label.brand-ic{cursor:pointer;}
 /* filters */
 .filters{display:flex;gap:8px;overflow-x:auto;margin:-4px -2px 14px;padding:4px 2px;scrollbar-width:none;}
 .filters::-webkit-scrollbar{display:none;}
+.vsw{display:flex;background:var(--soft);border-radius:12px;padding:3px;margin:0 0 12px;}
+.vsw button{flex:1;border:none;background:transparent;color:var(--tx2);font-weight:700;font-size:14px;padding:8px 6px;border-radius:9px;min-height:38px;}
+.vsw button.on{background:var(--card);color:var(--tx);box-shadow:var(--shadow);}
+.mc-h{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.mc-title{flex:1;text-align:center;font-size:18px;font-weight:800;}.mc-title small{font-size:12px;color:var(--tx2);margin-left:8px;font-weight:600;}
+.mc-nav{width:40px;height:40px;border-radius:12px;border:1.5px solid var(--bd);background:var(--card);color:var(--tx);font-size:22px;font-weight:700;}
+.mc-today{border:1.5px solid var(--bd);background:var(--card);color:var(--tx);border-radius:12px;height:40px;padding:0 12px;font-weight:700;font-size:13px;}
+.mc-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:16px;}
+.mc-w{text-align:center;font-size:12px;font-weight:700;color:var(--tx2);padding:4px 0;}.mc-w.su,.mc-d.su .mc-n{color:#c2412d;}.mc-w.sa,.mc-d.sa .mc-n{color:#2a6fb8;}
+.mc-d{min-height:58px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;padding:5px 2px 3px;font-family:inherit;}
+.mc-d:disabled{background:transparent;border-color:transparent;opacity:.75;}
+.mc-d.has{border-color:var(--ac);background:color-mix(in srgb,var(--ac) 8%,var(--card));cursor:pointer;}
+.mc-d.today .mc-n{background:var(--tx);color:var(--bg);border-radius:99px;}
+.mc-d.sel{background:var(--ac);border-color:var(--ac);}.mc-d.sel .mc-n,.mc-d.sel .mc-c{color:#fff;}
+.mc-n{font-size:14px;font-weight:800;min-width:22px;height:22px;line-height:22px;text-align:center;}
+.mc-dots{display:flex;gap:3px;}.mc-dots i{width:6px;height:6px;border-radius:50%;display:block;}
+.mc-d.sel .mc-dots i{outline:1px solid #fff;}.mc-c{font-size:10px;color:var(--tx2);font-weight:700;}
+.mc-hint{text-align:center;color:var(--tx2);font-size:13px;padding:6px 0 10px;}
+@media(min-width:900px){.mc-d{min-height:74px;}}
 .item.tap{cursor:pointer;}.item.tap:hover{border-color:var(--ac,#1D9E75);}
 .castmini{font-size:12px;color:var(--tx2);margin-top:6px;font-weight:600;}
 .srch input{width:100%;border:1.5px solid var(--bd);border-radius:12px;padding:10px 14px;font-size:16px;background:var(--card);color:var(--tx);margin:0 0 12px;}
@@ -381,7 +400,7 @@ async function handleIconFile(input){
 let S={projects:[],cur:null};
 let MODE='local';       // local: 端末内で編集可 / locked: 閲覧専用（公開データ）
 let EMBEDDED_ICON=false;
-const UI={q:'',spotVenue:'',radius:500,nearCat:'',near:null,geo:null,spotCat:'all',admin:false,view:'main',tab:'plan',kind:'all',scope:'cur',selMode:false,sel:new Set()};
+const UI={pv:'list',cm:'',cd:'',q:'',spotVenue:'',radius:500,nearCat:'',near:null,geo:null,spotCat:'all',admin:false,view:'main',tab:'plan',kind:'all',scope:'cur',selMode:false,sel:new Set()};
 
 function seed(){
   const it=(title,kind,date,o={})=>Object.assign({id:uid(),title,kind,status:'before',date,time:'',venue:'',price:0,paid:0,links:[],note:'',cast:[]},o);
@@ -673,7 +692,39 @@ function selbarHtml(p){
   const vis=visibleItems(p),all=vis.length&&vis.every(i=>UI.sel.has(i.id));
   return `<div class="selbar"><span class="n">${UI.sel.size}件選択</span><button data-act="selall" style="background:var(--bg);color:var(--tx)">${all?'全解除':'全選択'}</button><select id="bulk-status" aria-label="状況を一括変更"><option value="">状況変更</option>${STATUS_ORDER.map(k=>`<option value="${k}">${STATUS[k]}</option>`).join('')}</select><button data-act="seldel" style="background:var(--danger);color:#fff">削除</button></div>`;
 }
+
+/* ===== 月別カレンダー表示 ===== */
+function calInitMonth(p){
+  if(UI.cm)return;
+  const t=todayStr(),ds=p.items.map(i=>i.date).filter(Boolean).sort();
+  const nx=ds.find(d=>d>=t)||ds[ds.length-1]||t;
+  UI.cm=nx.slice(0,7);
+}
+function calHtml(p){
+  calInitMonth(p);
+  const [y,m]=UI.cm.split('-').map(Number),t=todayStr();
+  const first=new Date(y,m-1,1).getDay(),dim=new Date(y,m,0).getDate();
+  const vis=visibleItems(p),by={};vis.forEach(i=>{if(i.date)(by[i.date]=by[i.date]||[]).push(i);});
+  const dow=['日','月','火','水','木','金','土'];
+  let cells=dow.map((d,i)=>`<div class="mc-w${i===0?' su':i===6?' sa':''}">${d}</div>`).join('');
+  for(let i=0;i<first;i++)cells+='<div class="mc-e"></div>';
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`,L=by[ds]||[];
+    const wd=(first+d-1)%7;
+    const kinds=[...new Set(L.map(i=>i.kind))].slice(0,4);
+    cells+=`<button class="mc-d${L.length?' has':''}${ds===t?' today':''}${ds===UI.cd?' sel':''}${wd===0?' su':wd===6?' sa':''}" ${L.length?`data-act="cday" data-d="${ds}"`:'disabled'} aria-label="${m}月${d}日${L.length?' '+L.length+'件':''}"><span class="mc-n">${d}</span>${L.length?`<span class="mc-dots">${kinds.map(k=>`<i style="background:${KINDS[k].c}"></i>`).join('')}</span><span class="mc-c">${L.length}件</span>`:''}</button>`;
+  }
+  const sel=UI.cd&&by[UI.cd]?by[UI.cd]:null;
+  let detail;
+  if(sel){const d=dlabel(UI.cd);detail=`<div class="day"><div class="day-h"><span class="day-d">${d.md}<small>${d.dow}</small></span><span class="day-rel">${sel.length}件</span></div><div class="items">${sel.map(itemHtml).join('')}</div></div>`;}
+  else detail=`<div class="mc-hint">予定のある日（印のついた日）をタップすると、その日の予定が表示されます</div>`;
+  const und=vis.filter(i=>!i.date);
+  const undH=und.length?`<div class="day" style="margin-top:14px"><div class="day-h"><span class="day-d" style="font-size:17px">日程未定</span></div><div class="items">${und.map(itemHtml).join('')}</div></div>`:'';
+  const inMonth=vis.filter(i=>i.date&&i.date.startsWith(UI.cm)).length;
+  return `<div class="mc"><div class="mc-h"><button class="mc-nav" data-act="cmon" data-d="-1" aria-label="前の月">‹</button><div class="mc-title">${y}年${m}月<small>${inMonth}件</small></div><button class="mc-nav" data-act="cmon" data-d="1" aria-label="次の月">›</button><button class="mc-today" data-act="ctoday">今日</button></div><div class="mc-grid">${cells}</div></div>${detail}${undH}`;
+}
 function planListHtml(p){
+  if(UI.pv==='cal')return calHtml(p);
   const ed=canEdit();
   const list=visibleItems(p);
   const groups={};list.forEach(i=>{(groups[i.date||'']=groups[i.date||'']||[]).push(i);});
@@ -696,8 +747,9 @@ function planHtml(p){
   const rosBtn=allCast(p).length?'<button class="tbtn" data-act="roster">🎤 出演者から探す</button>':'';
   const impBtn=ed?'<button class="tbtn" data-act="importmodal">📷 画像・テキストから追加</button>':'';
   const calRow=(!UI.selMode&&(calBtn||impBtn||rosBtn))?`<div class="cal-row">${calBtn}${rosBtn}${impBtn}</div>`:'';
+  const sw=`<div class="vsw"><button class="${UI.pv==='list'?'on':''}" data-act="pview" data-v="list">☰ リスト</button><button class="${UI.pv==='cal'?'on':''}" data-act="pview" data-v="cal">📅 月カレンダー</button></div>`;
   const srch=`<div class="srch"><input type="search" id="q-input" placeholder="🔍 予定・出演者・会場・メモを検索" value="${esc(UI.q)}" autocomplete="off"></div>`;
-  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${calRow}${srch}${filters}<div id="plan-list">${planListHtml(p)}</div></div>`;
+  return `<div class="card"><div class="card-h"><span class="card-t">スケジュール</span>${ed?(UI.selMode?`<span style="display:flex;gap:10px;align-items:center"><span class="sub">${UI.sel.size}件選択中</span><button class="btn sm ghost" data-act="selexit">キャンセル</button></span>`:`<span style="display:flex;gap:8px"><button class="btn sm ghost" data-act="selmode">☑ 選択</button><button class="btn sm" data-act="additem">＋ 予定を追加</button></span>`):`<span class="sub">${list.length}件</span>`}</div>${calRow}${sw}${srch}${filters}<div id="plan-list">${planListHtml(p)}</div></div>`;
 }
 function itemHtml(i){
   const ed=canEdit(),k=KINDS[i.kind],sm=UI.selMode&&ed,cal=gcalUrl(i);
@@ -1294,6 +1346,10 @@ const A={
   savehero:()=>{const r=document.querySelector('input[name=hero]:checked');if(r){setHeroPref(P(),r.value);toast('この端末の表示を変更しました');}closeModal();render();},
   edit:el=>itemModal(el.dataset.id),
   detail:el=>detailModal(el.dataset.id),
+  pview:el=>{UI.pv=el.dataset.v;render();},
+  cmon:el=>{const [y,m]=UI.cm.split('-').map(Number),d=new Date(y,m-1+Number(el.dataset.d),1);UI.cm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');UI.cd='';render();},
+  ctoday:()=>{UI.cm=todayStr().slice(0,7);UI.cd='';render();},
+  cday:el=>{UI.cd=UI.cd===el.dataset.d?'':el.dataset.d;render();},
   talent:el=>talentModal(el.dataset.n),
   roster:()=>rosterModal(),
   hlimport:()=>{if(confirm('公式の出演者リスト（STAGE1 / Dreams STAGE / STAGE2 / STAGE3）を、現在のイベントに取り込みます。よろしいですか？'))hlImport();},
